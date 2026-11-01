@@ -456,6 +456,10 @@ function onState(msg) {
     banner('Lichter aus!', 'Neue Runde – alles dunkel', '#00f0ff');
     sound.already();
   }
+  if (msg.imported) {
+    banner('Spielstand geladen', `${formatNumber(ids.length)} Städte leuchten`, '#b6ff3b');
+    sound.milestone();
+  }
 }
 
 const recentResults = [];

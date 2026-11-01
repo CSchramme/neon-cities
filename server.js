@@ -49,20 +49,29 @@ let bestMulti = 0;
 const unlocked = new Map();
 let typing = { text: '', by: '' };
 
+/** Übernimmt einen Spielstand (aus Datei oder Upload). Gibt false bei ungültigem Inhalt zurück. */
+function applySave(raw) {
+  if (!raw || typeof raw !== 'object' || typeof raw.found !== 'object' || raw.found === null) return false;
+  found.clear();
+  unlocked.clear();
+  for (const [id, v] of Object.entries(raw.found)) {
+    const i = idToIdx.get(id);
+    if (i !== undefined) found.set(i, { t: Number(v?.t) || Date.now(), by: cleanText(v?.by, 40) });
+  }
+  bestStreak = Number(raw.bestStreak) || 0;
+  streak = Number(raw.streak) || 0; // laufende Combo übersteht einen Neustart
+  bestMulti = Number(raw.bestMulti) || 0;
+  for (const [id, t] of Object.entries(raw.achievements || {})) {
+    if (ACHIEVEMENTS.some((a) => a.id === id)) unlocked.set(id, Number(t) || Date.now());
+  }
+  checkAchievements(); // z. B. Spielstand aus älterer Version ohne Erfolge
+  return true;
+}
+
 function loadState() {
   try {
     const raw = JSON.parse(fs.readFileSync(SAVE_FILE, 'utf8'));
-    for (const [id, v] of Object.entries(raw.found || {})) {
-      const i = idToIdx.get(id);
-      if (i !== undefined) found.set(i, { t: v.t || Date.now(), by: v.by || '' });
-    }
-    bestStreak = raw.bestStreak || 0;
-    streak = raw.streak || 0; // laufende Combo übersteht einen Neustart
-    bestMulti = raw.bestMulti || 0;
-    for (const [id, t] of Object.entries(raw.achievements || {})) {
-      if (ACHIEVEMENTS.some((a) => a.id === id)) unlocked.set(id, t);
-    }
-    checkAchievements(); // z. B. Spielstand aus älterer Version ohne Erfolge
+    if (!applySave(raw)) throw new Error('unbekanntes Format');
     console.log(`  Spielstand geladen: ${found.size} Städte leuchten, ${unlocked.size} Erfolge freigeschaltet.`);
   } catch (e) {
     if (e.code !== 'ENOENT') console.warn('  Spielstand konnte nicht gelesen werden:', e.message);
@@ -70,21 +79,45 @@ function loadState() {
 }
 
 let saveTimer = null;
+function snapshot() {
+  const out = {
+    savedAt: new Date().toISOString(), streak, bestStreak, bestMulti,
+    achievements: Object.fromEntries(unlocked), found: {},
+  };
+  for (const [i, v] of found) out.found[CITIES[i].id] = v;
+  return JSON.stringify(out, null, 1);
+}
+
 function saveState() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    const out = {
-      savedAt: new Date().toISOString(), streak, bestStreak, bestMulti,
-      achievements: Object.fromEntries(unlocked), found: {},
-    };
-    for (const [i, v] of found) out.found[CITIES[i].id] = v;
+    saveTimer = null;
     const tmp = SAVE_FILE + '.tmp';
-    fs.writeFile(tmp, JSON.stringify(out, null, 1), (err) => {
+    fs.writeFile(tmp, snapshot(), (err) => {
       if (err) return console.warn('  Speichern fehlgeschlagen:', err.message);
       fs.rename(tmp, SAVE_FILE, (err2) => err2 && console.warn('  Speichern fehlgeschlagen:', err2.message));
     });
   }, 250);
 }
+
+/** Sofort speichern, z. B. wenn Plesk/Passenger die App beendet */
+function saveNow() {
+  if (!saveTimer) return;
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  try {
+    fs.writeFileSync(SAVE_FILE, snapshot());
+  } catch (e) {
+    console.warn('  Speichern fehlgeschlagen:', e.message);
+  }
+}
+for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) {
+  process.on(sig, () => {
+    saveNow();
+    process.exit(0);
+  });
+}
+process.on('exit', saveNow);
 
 function stateCounts() {
   const counts = new Array(STATES.length).fill(0);
@@ -209,8 +242,49 @@ function encodeFrame(str, opcode = 0x1) {
   return Buffer.concat([header, payload]);
 }
 
-class Client {
+/** Gemeinsame Verarbeitung aller Nachrichten – egal ob per WebSocket oder HTTP */
+function handleMessage(client, msg) {
+  if (!msg || typeof msg !== 'object') return;
+  switch (msg.t) {
+    case 'hello':
+      client.role = ['control', 'preview'].includes(msg.role) ? msg.role : 'overlay';
+      if (CONTROL_KEY && msg.key === CONTROL_KEY) client.authed = true;
+      client.send({ t: 'welcome', id: client.id, needKey: !!CONTROL_KEY, authed: client.authed, transport: client.kind });
+      client.send(fullState());
+      broadcastPresence();
+      return;
+    case 'ping':
+      client.send({ t: 'pong', at: msg.at });
+      return;
+    default:
+      break;
+  }
+  if (!client.authed) {
+    client.send({ t: 'denied' });
+    return;
+  }
+  switch (msg.t) {
+    case 'type':
+      typing = { text: cleanText(msg.text), by: cleanText(msg.by, 40) };
+      broadcast({ t: 'type', text: typing.text, by: typing.by, src: client.id }, client);
+      break;
+    case 'submit':
+      handleSubmit(msg.text, msg.by);
+      break;
+    case 'undo':
+      handleUndo(msg.i);
+      break;
+    case 'reset':
+      handleReset();
+      break;
+    default:
+      break;
+  }
+}
+
+class WsClient {
   constructor(socket) {
+    this.kind = 'ws';
     this.id = nextClientId++;
     this.socket = socket;
     this.buf = Buffer.alloc(0);
@@ -226,8 +300,11 @@ class Client {
   }
 
   send(obj) {
-    if (this.socket.destroyed) return;
-    this.socket.write(encodeFrame(typeof obj === 'string' ? obj : JSON.stringify(obj)));
+    this.writeFrame(encodeFrame(JSON.stringify(obj)));
+  }
+
+  writeFrame(frame) {
+    if (!this.socket.destroyed) this.socket.write(frame);
   }
 
   drop() {
@@ -235,6 +312,12 @@ class Client {
     clients.delete(this);
     this.socket.destroy();
     broadcastPresence();
+  }
+
+  heartbeat() {
+    if (!this.alive) return this.drop();
+    this.alive = false;
+    this.writeFrame(Buffer.from([0x89, 0]));
   }
 
   onData(chunk) {
@@ -280,7 +363,7 @@ class Client {
       return this.drop();
     }
     if (opcode === 0x9) { // ping -> pong
-      if (!this.socket.destroyed) this.socket.write(Buffer.concat([Buffer.from([0x8a, payload.length]), payload]));
+      this.writeFrame(Buffer.concat([Buffer.from([0x8a, payload.length]), payload]));
       return;
     }
     if (opcode === 0xa) { this.alive = true; return; }
@@ -292,52 +375,223 @@ class Client {
       this.alive = true;
       let msg;
       try { msg = JSON.parse(data); } catch { return; }
-      this.onMessage(msg);
-    }
-  }
-
-  onMessage(msg) {
-    if (!msg || typeof msg !== 'object') return;
-    switch (msg.t) {
-      case 'hello':
-        this.role = ['control', 'preview'].includes(msg.role) ? msg.role : 'overlay';
-        if (CONTROL_KEY && msg.key === CONTROL_KEY) this.authed = true;
-        this.send({ t: 'welcome', id: this.id, needKey: !!CONTROL_KEY, authed: this.authed });
-        this.send(fullState());
-        broadcastPresence();
-        return;
-      case 'ping':
-        this.send({ t: 'pong', at: msg.at });
-        return;
-    }
-    if (!this.authed) {
-      this.send({ t: 'denied' });
-      return;
-    }
-    switch (msg.t) {
-      case 'type':
-        typing = { text: cleanText(msg.text), by: cleanText(msg.by, 40) };
-        broadcast({ t: 'type', text: typing.text, by: typing.by, src: this.id }, this);
-        break;
-      case 'submit':
-        handleSubmit(msg.text, msg.by);
-        break;
-      case 'undo':
-        handleUndo(msg.i);
-        break;
-      case 'reset':
-        handleReset();
-        break;
-      default:
-        break;
+      handleMessage(this, msg);
     }
   }
 }
 
+// ---------------------------------------------------------------- HTTP-Ersatzweg
+// Falls ein Hoster (z. B. Plesk im Proxy-Modus) keine WebSockets durchlässt:
+// Empfang per Server-Sent Events (/events) oder Long-Polling (/poll),
+// Senden per POST (/send). Die Seiten wechseln automatisch dorthin.
+const httpClients = new Map(); // cid -> HttpClient
+
+class HttpClient {
+  constructor(cid) {
+    this.kind = 'http';
+    this.id = nextClientId++;
+    this.cid = cid;
+    this.role = 'unknown';
+    this.authed = !CONTROL_KEY;
+    this.queue = [];
+    this.sse = null;
+    this.poll = null;
+    this.pollTimer = null;
+    this.lastSeen = Date.now();
+  }
+
+  send(obj) {
+    this.sendText(JSON.stringify(obj));
+  }
+
+  sendText(json) {
+    if (this.sse) {
+      this.sse.write(`data: ${json}\n\n`);
+      return;
+    }
+    this.queue.push(json);
+    if (this.queue.length > 500) this.queue = [JSON.stringify(fullState())]; // zu weit hinterher: neu synchronisieren
+    this.flushPoll();
+  }
+
+  flushPoll() {
+    if (!this.poll || !this.queue.length) return;
+    const res = this.poll;
+    this.poll = null;
+    clearTimeout(this.pollTimer);
+    this.lastSeen = Date.now();
+    res.end(`[${this.queue.join(',')}]`);
+    this.queue = [];
+  }
+
+  attachSse(req, res) {
+    if (this.sse) this.sse.end();
+    this.sse = res;
+    this.lastSeen = Date.now();
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no', // nginx: nicht puffern
+    });
+    res.socket?.setNoDelay(true);
+    // etwas Polster, damit Zwischen-Puffer sofort weiterreichen
+    res.write(`:${' '.repeat(2048)}\nretry: 2000\n\n`);
+    for (const json of this.queue) res.write(`data: ${json}\n\n`);
+    this.queue = [];
+    req.on('close', () => {
+      if (this.sse === res) {
+        this.sse = null;
+        this.lastSeen = Date.now();
+      }
+    });
+  }
+
+  attachPoll(req, res) {
+    if (this.poll) this.poll.end('[]');
+    this.poll = res;
+    this.lastSeen = Date.now();
+    res.writeHead(200, { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
+    clearTimeout(this.pollTimer);
+    this.pollTimer = setTimeout(() => {
+      if (this.poll === res) {
+        this.poll = null;
+        res.end('[]');
+      }
+    }, 25000);
+    req.on('close', () => {
+      if (this.poll === res) {
+        this.poll = null;
+        clearTimeout(this.pollTimer);
+      }
+    });
+    this.flushPoll();
+  }
+
+  heartbeat() {
+    if (this.sse) {
+      this.sse.write(': ping\n\n');
+      this.lastSeen = Date.now();
+    } else if (!this.poll && Date.now() - this.lastSeen > 60000) {
+      this.drop();
+    }
+  }
+
+  drop() {
+    if (!clients.has(this)) return;
+    clients.delete(this);
+    httpClients.delete(this.cid);
+    this.sse?.end();
+    if (this.poll) this.poll.end('[]');
+    clearTimeout(this.pollTimer);
+    broadcastPresence();
+  }
+}
+
+function httpClientFor(url, { create }) {
+  const cid = String(url.searchParams.get('cid') || '').slice(0, 64);
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(cid)) return null;
+  let c = httpClients.get(cid);
+  if (!c && create) {
+    c = new HttpClient(cid);
+    httpClients.set(cid, c);
+    clients.add(c);
+    handleMessage(c, { t: 'hello', role: url.searchParams.get('role'), key: url.searchParams.get('key') || '' });
+  }
+  return c || null;
+}
+
+function readBody(req, limit = 65536) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (ch) => {
+      size += ch.length;
+      if (size > limit) {
+        reject(new Error('zu groß'));
+        req.destroy();
+      } else {
+        chunks.push(ch);
+      }
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+/** Liefert true, wenn die Anfrage ein Sync-Endpunkt war */
+function handleSyncHttp(req, res, url) {
+  if (url.pathname === '/events' && req.method === 'GET') {
+    const c = httpClientFor(url, { create: true });
+    if (!c) return res.writeHead(400).end(), true;
+    c.attachSse(req, res);
+    return true;
+  }
+  if (url.pathname === '/poll' && req.method === 'GET') {
+    const c = httpClientFor(url, { create: true });
+    if (!c) return res.writeHead(400).end(), true;
+    c.attachPoll(req, res);
+    return true;
+  }
+  if (url.pathname === '/send' && req.method === 'POST') {
+    const c = httpClientFor(url, { create: false });
+    if (!c) return res.writeHead(409, { 'Content-Type': 'text/plain' }).end('unbekannt – bitte neu verbinden'), true;
+    c.lastSeen = Date.now();
+    readBody(req).then((text) => {
+      let msgs;
+      try { msgs = JSON.parse(text); } catch { msgs = null; }
+      if (!Array.isArray(msgs)) return res.writeHead(400).end();
+      for (const m of msgs.slice(0, 200)) handleMessage(c, m);
+      res.writeHead(204, { 'Cache-Control': 'no-store' }).end();
+    }).catch(() => res.writeHead(413).end());
+    return true;
+  }
+  return false;
+}
+
+/** Spielstand herunterladen (GET) oder hochladen (POST) – mit Passwort, falls gesetzt */
+function handleSaveHttp(req, res, url) {
+  const key = url.searchParams.get('key') || req.headers['x-neon-key'] || '';
+  if (CONTROL_KEY && key !== CONTROL_KEY) {
+    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Passwort fehlt oder ist falsch');
+    return;
+  }
+  if (req.method === 'GET') {
+    const date = new Date().toISOString().slice(0, 10);
+    res.writeHead(200, {
+      'Content-Type': MIME['.json'],
+      'Cache-Control': 'no-store',
+      'Content-Disposition': `attachment; filename="spielstand-${date}.json"`,
+    });
+    res.end(snapshot());
+    return;
+  }
+  if (req.method === 'POST') {
+    readBody(req, 4 * 1024 * 1024).then((text) => {
+      let raw;
+      try { raw = JSON.parse(text); } catch { raw = null; }
+      if (!applySave(raw)) {
+        res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Das ist keine gültige spielstand.json');
+        return;
+      }
+      typing = { text: '', by: '' };
+      saveState();
+      broadcast({ ...fullState(), imported: true });
+      res.writeHead(200, { 'Content-Type': MIME['.json'] }).end(JSON.stringify({ cities: found.size, achievements: unlocked.size }));
+      console.log(`  Spielstand hochgeladen: ${found.size} Städte, ${unlocked.size} Erfolge.`);
+    }).catch(() => res.writeHead(413).end());
+    return;
+  }
+  res.writeHead(405).end();
+}
+
 function broadcast(obj, except = null) {
-  const frame = encodeFrame(JSON.stringify(obj));
+  const json = JSON.stringify(obj);
+  let frame = null;
   for (const c of clients) {
-    if (c !== except && !c.socket.destroyed) c.socket.write(frame);
+    if (c === except) continue;
+    if (c.kind === 'ws') c.writeFrame(frame ||= encodeFrame(json));
+    else c.sendText(json);
   }
 }
 
@@ -353,12 +607,7 @@ function broadcastPresence() {
 
 // Verbindungen prüfen (z. B. wenn OBS die Quelle hart beendet)
 setInterval(() => {
-  const ping = Buffer.from([0x89, 0]);
-  for (const c of clients) {
-    if (!c.alive) { c.drop(); continue; }
-    c.alive = false;
-    if (!c.socket.destroyed) c.socket.write(ping);
-  }
+  for (const c of [...clients]) c.heartbeat();
 }, 20000).unref();
 
 // ---------------------------------------------------------------- HTTP
@@ -382,6 +631,11 @@ const ROUTES = {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
+  if (handleSyncHttp(req, res, url)) return;
+  if (url.pathname === '/api/spielstand') {
+    handleSaveHttp(req, res, url);
+    return;
+  }
   if (url.pathname === '/api/state') {
     res.writeHead(200, { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-store' });
     res.end(JSON.stringify({ ...fullState(), cities: CITIES.length }));
@@ -431,7 +685,7 @@ server.on('upgrade', (req, socket) => {
     'Connection: Upgrade\r\n' +
     `Sec-WebSocket-Accept: ${accept}\r\n\r\n`,
   );
-  clients.add(new Client(socket));
+  clients.add(new WsClient(socket));
 });
 
 server.on('error', (err) => {

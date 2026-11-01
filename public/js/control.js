@@ -309,6 +309,7 @@ function onState(msg) {
     $('city').value = msg.typing.text || '';
   }
   if (msg.reset) setResult('', '', 'Neue Runde – alle Lichter sind aus.');
+  if (msg.imported) setResult('found', 'GELADEN', `Spielstand übernommen: ${formatNumber(found.size)} Städte, ${unlocked.size} ${unlocked.size === 1 ? 'Erfolg' : 'Erfolge'}.`);
 }
 
 function onResult(r) {
@@ -408,7 +409,10 @@ async function main() {
   if (urlKey) storageSet('nc-key', urlKey);
   link = new Link('control', { key: urlKey || storageGet('nc-key') || '' });
   let presence = { overlays: 0, controls: 0 };
-  const showPresence = () => setStatus(true, `Live · ${presence.overlays} Browserquelle${presence.overlays === 1 ? '' : 'n'}`);
+  const showPresence = () => {
+    const via = link.mode === 'ws' ? '' : ' · HTTP';
+    setStatus(true, `Live${via} · ${presence.overlays} Browserquelle${presence.overlays === 1 ? '' : 'n'}`);
+  };
   link.on('open', showPresence);
   link.on('close', () => setStatus(false, 'Getrennt – verbinde neu …'));
   link.on('presence', (p) => { presence = p; if (link.connected) showPresence(); });
@@ -428,6 +432,39 @@ async function main() {
     e.preventDefault();
     storageSet('nc-key', $('keyinput').value);
     location.reload();
+  });
+
+  // Spielstand herunterladen / hochladen
+  const saveKey = () => urlKey || storageGet('nc-key') || '';
+  $('save-dl').addEventListener('click', () => {
+    const k = saveKey();
+    $('save-dl').href = `/api/spielstand${k ? `?key=${encodeURIComponent(k)}` : ''}`;
+  });
+  $('save-ul').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    let text;
+    let n = 0;
+    try {
+      text = await file.text();
+      const raw = JSON.parse(text);
+      n = Object.keys(raw.found || {}).length;
+    } catch {
+      toast('Das ist keine gültige spielstand.json');
+      return;
+    }
+    if (!confirm(`Spielstand aus „${file.name}“ laden?\n\nDer aktuelle Stand (${formatNumber(found.size)} Städte) wird ersetzt durch ${formatNumber(n)} Städte aus der Datei.`)) return;
+    const k = saveKey();
+    try {
+      const res = await fetch(`/api/spielstand${k ? `?key=${encodeURIComponent(k)}` : ''}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: text,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      toast('Spielstand geladen ✓');
+    } catch (err) {
+      setResult('miss', 'FEHLER', `Hochladen fehlgeschlagen: ${err.message}`);
+    }
   });
 
   $('reset').addEventListener('click', () => {

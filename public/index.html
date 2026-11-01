@@ -105,7 +105,11 @@
 
       <section class="card danger-card">
         <div class="card-head"><h2>Spiel</h2></div>
-        <p class="sub">Der Spielstand wird automatisch gespeichert (spielstand.json) und übersteht einen Neustart.</p>
+        <p class="sub">Der Spielstand wird automatisch in der Datei <b>spielstand.json</b> auf dem Server gespeichert und übersteht jeden Neustart. Zum Umziehen (z. B. vom PC auf deinen Webspace) herunterladen und dort wieder hochladen.</p>
+        <div class="save-row">
+          <a id="save-dl" class="btn-ghost" href="/api/spielstand" download>⬇ Spielstand herunterladen</a>
+          <label class="btn-ghost">⬆ Spielstand hochladen<input id="save-ul" type="file" accept=".json,application/json" hidden></label>
+        </div>
         <button id="reset" class="btn-danger">Alles zurücksetzen</button>
       </section>
     </div>

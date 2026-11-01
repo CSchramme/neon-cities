@@ -118,11 +118,19 @@ Alles wird automatisch in **`spielstand.json`** im Projektordner gespeichert, na
 - freigeschaltete Erfolge
 - laufende und beste Combo, größter Mega-Treffer
 
-Der Fortschritt zu den nächsten Erfolgen (z. B. „Hauptstadt-Tour 12 / 16“ oder „Teamwork 7 / 10“) wird daraus berechnet und geht deshalb ebenfalls nicht verloren. Zum Sichern die Datei kopieren, bei einer neuen Version in den neuen Ordner mitnehmen.
+Der Fortschritt zu den nächsten Erfolgen (z. B. „Hauptstadt-Tour 12 / 16“ oder „Teamwork 7 / 10“) wird daraus berechnet und geht deshalb ebenfalls nicht verloren.
 
-## Online statt lokal betreiben (optional)
+**Spielstand umziehen** (z. B. vom PC auf deinen Webspace): Auf der Steuerseite unten im Bereich *Spiel* auf **„⬇ Spielstand herunterladen“** klicken, dann auf der anderen Steuerseite **„⬆ Spielstand hochladen“**. Alle Overlays übernehmen den Stand sofort. Alternativ kopierst du die Datei `spielstand.json` von Hand.
 
-Der Server läuft auch bei Hostern mit WebSocket-Unterstützung (z. B. Render, Railway, Fly.io). Dann solltest du die Steuerung mit einem Passwort schützen:
+## Auf deinem Webspace mit Plesk
+
+Läuft dein Hosting mit **Plesk und Node.js**, kann NEON CITIES dauerhaft unter deiner eigenen Adresse laufen, z. B. `https://neon.deinedomain.de`. Dann muss dein PC nicht als Server laufen, und die Overlays funktionieren überall.
+
+👉 **Schritt-für-Schritt-Anleitung: [PLESK.md](PLESK.md)**
+
+## Andere Hoster (optional)
+
+Der Server läuft auch bei anderen Node.js-Hostern (z. B. Render, Railway, Fly.io). Dann solltest du die Steuerung mit einem Passwort schützen:
 
 ```bash
 NEON_KEY=geheim PORT=8080 node server.js
@@ -130,10 +138,13 @@ NEON_KEY=geheim PORT=8080 node server.js
 
 Die Steuerseite fragt dann nach dem Passwort, alternativ öffnest du sie mit `?key=geheim`. Die Overlays brauchen kein Passwort, denn sie können nur anzeigen. Mit `SAVE_FILE=/pfad/spielstand.json` legst du fest, wo der Spielstand gespeichert wird.
 
+Lässt ein Hoster keine WebSockets durch, schalten alle Seiten automatisch auf einen HTTP-Ersatzweg um (Server-Sent Events, notfalls Long-Polling). Die Steuerung zeigt dann „Live · HTTP“. Erzwingen lässt sich ein Weg mit `?transport=ws`, `?transport=sse` oder `?transport=poll` in der Adresse.
+
 ## Projektaufbau
 
 ```
-server.js              Webserver + WebSocket-Sync (ohne Abhängigkeiten)
+server.js              Webserver + Live-Sync (WebSocket mit HTTP-Ersatzweg, ohne Abhängigkeiten)
+app.cjs                Startdatei für Plesk / Phusion Passenger
 public/index.html      Steuerseite
 public/overlay.html    Overlay / Browserquelle
 public/js/game.js      Namens-Erkennung (läuft im Server und im Browser)
