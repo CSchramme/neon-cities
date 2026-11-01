@@ -32,6 +32,7 @@
       <div class="bar"><div id="bar-segs" class="segs"></div></div>
       <div class="meta-row">
         <span id="pct" class="pct">0,0 %</span>
+        <span id="trophies" class="trophies"><i>🏆</i> <b>0</b>/<span>0</span></span>
         <span id="combo" class="combo"></span>
       </div>
     </section>
@@ -39,6 +40,16 @@
     <section id="feed" class="panel">
       <h3>Zuletzt aufgeleuchtet</h3>
       <ol id="feed-list"></ol>
+    </section>
+
+    <section id="goals" class="panel">
+      <h3>Erfolge <span id="goals-count" class="goals-count"></span></h3>
+      <div id="goals-list" class="goals-list"></div>
+    </section>
+
+    <section id="ach-all" class="panel">
+      <h3>Erfolge <span id="ach-all-count" class="goals-count"></span></h3>
+      <div id="ach-all-list" class="ach-all-list"></div>
     </section>
 
     <section id="states" class="panel">
@@ -59,6 +70,14 @@
     </div>
 
     <div id="banner" class="banner"></div>
+    <div id="achv" class="achv" aria-live="polite">
+      <div class="achv-ic"></div>
+      <div class="achv-tx">
+        <div class="achv-lb"></div>
+        <div class="achv-nm"></div>
+        <div class="achv-ds"></div>
+      </div>
+    </div>
     <div id="offline" class="offline">Verbinde mit Neon-Server …</div>
   </div>
 

@@ -123,6 +123,17 @@ export class Sound {
     this.tone({ freq: this.note(24), type: 'sine', at: 0.36, dur: 0.9, gain: 0.15 });
   }
 
+  // Erfolg freigeschaltet: glitzerndes Glocken-Arpeggio
+  achievement(tier = 'bronze') {
+    const lift = { bronze: 0, silber: 2, gold: 4, platin: 7 }[tier] ?? 0;
+    [0, 7, 12, 16, 19, 24].forEach((st, i) => {
+      this.tone({ freq: this.note(st + lift, 659.25), type: 'triangle', at: i * 0.07, dur: 0.9, gain: 0.1 });
+      this.tone({ freq: this.note(st + lift + 12, 659.25), type: 'sine', at: i * 0.07 + 0.02, dur: 0.6, gain: 0.04 });
+    });
+    this.tone({ freq: this.note(lift - 12, 659.25), type: 'sine', at: 0, dur: 1.4, gain: 0.12 });
+    for (let i = 0; i < 4; i++) this.noise({ at: 0.35 + i * 0.12, dur: 0.25, gain: 0.03, freq: 9000 });
+  }
+
   win() {
     const seq = [0, 4, 7, 12, 7, 12, 16, 19, 24];
     seq.forEach((s, i) => {

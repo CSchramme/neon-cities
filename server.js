@@ -11,6 +11,7 @@ import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { buildCityIndex, NameIndex } from './public/js/game.js';
+import { buildAchievements, makeContext, progress } from './public/js/achievements.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, 'public');
@@ -32,6 +33,7 @@ const CITIES = DATA.cities;
 const STATES = DATA.states;
 const cityIndex = buildCityIndex(CITIES);
 const idToIdx = new Map(CITIES.map((c, i) => [c.id, i]));
+const ACHIEVEMENTS = buildAchievements(DATA);
 
 const GEMEINDEN = JSON.parse(fs.readFileSync(path.join(ROOT, 'lib/gemeinden.json'), 'utf8'));
 const gemIndex = new NameIndex();
@@ -42,6 +44,9 @@ GEMEINDEN.forEach(([name], i) => gemIndex.addName(name, i, { base: false }));
 const found = new Map();
 let streak = 0;
 let bestStreak = 0;
+let bestMulti = 0;
+/** freigeschaltete Erfolge: id -> timestamp */
+const unlocked = new Map();
 let typing = { text: '', by: '' };
 
 function loadState() {
@@ -52,7 +57,12 @@ function loadState() {
       if (i !== undefined) found.set(i, { t: v.t || Date.now(), by: v.by || '' });
     }
     bestStreak = raw.bestStreak || 0;
-    console.log(`  Spielstand geladen: ${found.size} Städte leuchten bereits.`);
+    bestMulti = raw.bestMulti || 0;
+    for (const [id, t] of Object.entries(raw.achievements || {})) {
+      if (ACHIEVEMENTS.some((a) => a.id === id)) unlocked.set(id, t);
+    }
+    checkAchievements(); // z. B. Spielstand aus älterer Version ohne Erfolge
+    console.log(`  Spielstand geladen: ${found.size} Städte leuchten, ${unlocked.size} Erfolge freigeschaltet.`);
   } catch (e) {
     if (e.code !== 'ENOENT') console.warn('  Spielstand konnte nicht gelesen werden:', e.message);
   }
@@ -62,7 +72,10 @@ let saveTimer = null;
 function saveState() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    const out = { savedAt: new Date().toISOString(), bestStreak, found: {} };
+    const out = {
+      savedAt: new Date().toISOString(), bestStreak, bestMulti,
+      achievements: Object.fromEntries(unlocked), found: {},
+    };
     for (const [i, v] of found) out.found[CITIES[i].id] = v;
     const tmp = SAVE_FILE + '.tmp';
     fs.writeFile(tmp, JSON.stringify(out, null, 1), (err) => {
@@ -78,10 +91,33 @@ function stateCounts() {
   return counts;
 }
 
-function fullState() {
+function foundList() {
   const list = [...found.entries()].map(([i, v]) => [i, v.t, v.by]);
   list.sort((a, b) => a[1] - b[1]);
-  return { t: 'state', found: list, typing, streak, bestStreak, total: CITIES.length };
+  return list;
+}
+
+function fullState() {
+  return {
+    t: 'state', found: foundList(), typing, streak, bestStreak, bestMulti,
+    achievements: [...unlocked.entries()], total: CITIES.length,
+  };
+}
+
+/** Prüft alle Erfolge und gibt die neu freigeschalteten IDs zurück */
+function checkAchievements() {
+  const ctx = makeContext(DATA, foundList(), { bestStreak, bestMulti });
+  const fresh = [];
+  const now = Date.now();
+  for (const a of ACHIEVEMENTS) {
+    if (unlocked.has(a.id)) continue;
+    const { cur, max } = progress(a, ctx);
+    if (cur >= max) {
+      unlocked.set(a.id, now);
+      fresh.push(a.id);
+    }
+  }
+  return fresh;
 }
 
 // ---------------------------------------------------------------- Spielzüge
@@ -120,13 +156,15 @@ function handleSubmit(rawText, rawBy) {
   }
   streak += 1;
   bestStreak = Math.max(bestStreak, streak);
+  bestMulti = Math.max(bestMulti, fresh.length);
+  const achievements = checkAchievements();
   const prevTotal = found.size - fresh.length;
   const milestone = Math.floor(found.size / 100) > Math.floor(prevTotal / 100) ? Math.floor(found.size / 100) * 100 : 0;
   const win = found.size === CITIES.length;
   saveState();
   broadcast({
     t: 'result', kind: 'found', input, by, ids: fresh, t0: now,
-    completed, streak, bestStreak, milestone, win, count: found.size,
+    completed, streak, bestStreak, bestMulti, milestone, win, count: found.size, achievements,
   });
 }
 
@@ -139,7 +177,10 @@ function handleUndo(i) {
 
 function handleReset() {
   found.clear();
+  unlocked.clear();
   streak = 0;
+  bestStreak = 0;
+  bestMulti = 0;
   typing = { text: '', by: '' };
   saveState();
   broadcast({ ...fullState(), reset: true });

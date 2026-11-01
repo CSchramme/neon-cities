@@ -16,6 +16,7 @@ Jeder Buchstabe, den du tippst, erscheint **sofort live in allen Browserquellen*
 - **Live-Sync für jeden Tastendruck** in alle Overlays gleichzeitig, über WebSocket und ohne Verzögerung
 - **Neon-Effekte:** Ein Komet fliegt vom Eingabefeld zur Stadt, dann folgen Lichtring und Funken. Die Stadt leuchtet in ihrer Bundeslandfarbe weiter, das Bundesland wird mit jeder Stadt heller.
 - **Große Momente:** Bundesland komplett, Meilensteine (100, 200 … Städte), Combo-Zähler und ein Feuerwerk-Finale, wenn ganz Deutschland leuchtet
+- **31 Erfolge** wie „Hauptstadt-Tour“, „Millionen-Club“, „Ruhrpott“ oder „Die Hanse“, mit Freischalt-Animation, Sound und einer „Fast geschafft“-Liste im Overlay (mehr dazu [unten](#erfolge))
 - **Sounds** (synthetisch erzeugt, abschaltbar), dazu ein leises Neon-Klicken bei jedem Buchstaben
 - **Hochformat für TikTok** (1080 × 1920) und **Querformat für YouTube/OBS** (1920 × 1080), dazu Einzel-Widgets (nur Karte, nur Eingabe, nur Statistik)
 - **Tolerante Erkennung:** Groß- und Kleinschreibung sind egal, `Koeln` = `Köln`, `Sankt` = `St.`, und `Frankfurt` findet beide Frankfurts. `Neustadt` lässt gleich alle 12 Neustädte aufleuchten.
@@ -50,6 +51,7 @@ Alle Links findest du auch auf der Steuerseite unter **Browserquellen**, dort ka
 | Nur Karte | `http://localhost:3000/overlay?view=karte` | 760 × 1030 |
 | Nur Eingabe-Leiste | `http://localhost:3000/overlay?view=eingabe` | 1400 × 210 |
 | Nur Statistik | `http://localhost:3000/overlay?view=statistik` | 600 × 1680 |
+| Nur Erfolge | `http://localhost:3000/overlay?view=erfolge` | 640 × 1480 |
 
 ### OBS Studio / Streamlabs
 
@@ -72,13 +74,28 @@ Hänge sie mit `&` an, z. B. `…/overlay?layout=quer&bg=0&sound=0`.
 | Option | Bedeutung |
 | --- | --- |
 | `layout=hoch` / `layout=quer` | Hoch- oder Querformat erzwingen. Ohne Angabe wird es automatisch an der Größe der Quelle erkannt. |
-| `view=karte` / `eingabe` / `statistik` | nur ein Teil des Overlays (transparent) |
+| `view=karte` / `eingabe` / `statistik` / `erfolge` | nur ein Teil des Overlays (transparent) |
 | `bg=0` | transparenter Hintergrund, z. B. über deiner Kamera |
 | `bg=1` | dunkler Neon-Hintergrund (Standard beim kompletten Overlay) |
 | `sound=0` | alle Sounds aus |
 | `ticks=0` | kein Klicken beim Tippen |
 | `vol=40` | Lautstärke 0–100 (Standard 60) |
 | `hints=0` | noch dunkle Städte nicht als kleine Punkte zeigen |
+
+## Erfolge
+
+![Erfolg freigeschaltet](docs/screenshot-erfolge.jpg)
+
+Während ihr spielt, schaltet ihr Erfolge frei. Jeder Erfolg erscheint als leuchtende Karte im Overlay, mit Sound. Gehört eine Städteliste dazu (z. B. die Hauptstädte), blitzen deren Städte auf der Karte auf. Im Overlay wechselt sich die Liste „Zuletzt aufgeleuchtet“ (im Hochformat: die Bundesländer) regelmäßig mit den Erfolgen ab, die als Nächstes fällig sind, z. B. „Hauptstadt-Tour 12 / 16“. So weiß dein Chat immer, worauf es gerade ankommt.
+
+| Gruppe | Erfolge |
+| --- | --- |
+| Fortschritt | Es werde Licht (1. Stadt) · Hundert Lichter · Lichtermeer (500) · Halbzeit (1.030) · Fast taghell (1.500) · Ganz Deutschland (alle) |
+| Besondere Städte | Hauptstadt-Tour (alle 16 Landeshauptstädte) · Millionen-Club · Top 10 · Großstadt-Jäger (alle 80 Großstädte) · Stadtstaaten · Ruhrpott · Die Hanse · Kompass (nördlichste/südlichste/westlichste/östlichste Stadt) · Klein, aber oho (5 kleinste Städte) · Kurz & knapp (Ulm, Hof, Aub) · Neustadt-Sammler · Kurlaub (25 „Bad“-Städte) · Am Main · Am Rhein · Donau-Welle · Von A bis Z |
+| Bundesländer | Erstes Bundesland · Fünf Länder |
+| Spielweise | Im Flow / Unaufhaltsam / Neon-Maschine (10er-, 25er-, 50er-Combo) · Blitzlicht (10 Städte in einer Minute) · Mega-Treffer (5 Städte mit einer Eingabe) · Teamwork / Der ganze Chat (Tipps von 10 bzw. 25 verschiedenen Zuschauern) |
+
+Auf der Steuerseite siehst du alle Erfolge mit Fortschritt. Ein Klick auf einen Erfolg zeigt dir, welche Städte dafür noch fehlen. Die Liste siehst nur du. Erfolge bleiben freigeschaltet, auch wenn du eine Stadt zurücknimmst. Erst „Alles zurücksetzen“ setzt sie zurück.
 
 ## Vom Handy aus tippen
 
@@ -111,6 +128,7 @@ public/index.html      Steuerseite
 public/overlay.html    Overlay / Browserquelle
 public/js/game.js      Namens-Erkennung (läuft im Server und im Browser)
 public/js/map.js       Neon-Karte (Canvas)
+public/js/achievements.js  Erfolge (Server + Browser)
 public/data/           Städte + Bundesland-Umrisse
 lib/gemeinden.json     übrige Gemeinden (für „keine Stadt“-Hinweise)
 tools/build-data.py    erzeugt die Daten aus den Originalquellen neu

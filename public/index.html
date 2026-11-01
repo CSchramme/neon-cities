@@ -23,7 +23,8 @@
 
   <main class="layout">
     <div class="col">
-      <section class="card input-card">
+      <div id="input-sentinel" class="sentinel" aria-hidden="true"></div>
+      <section class="card input-card" id="input-card">
         <form id="form" autocomplete="off">
           <label for="city" class="label">Stadt eingeben</label>
           <div class="input-row">
@@ -51,6 +52,14 @@
         <div id="preview" class="preview quer">
           <iframe id="preview-frame" title="Overlay-Vorschau" src="/overlay?layout=quer&sound=0&preview=1"></iframe>
         </div>
+      </section>
+
+      <section class="card ach-card">
+        <div class="card-head">
+          <h2>Erfolge <span id="ach-count" class="ach-count"></span></h2>
+          <span class="sub">Klick zeigt, welche Städte noch fehlen</span>
+        </div>
+        <div id="achievements" class="achievements"></div>
       </section>
 
       <section class="card links-card">

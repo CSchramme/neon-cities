@@ -1,6 +1,7 @@
 // Steuerung: hier wird getippt – jeder Buchstabe geht sofort an alle Overlays.
 import { STATE_COLORS, formatNumber } from './game.js';
 import { Link } from './net.js';
+import { TIERS, buildAchievements, makeContext, progress } from './achievements.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -10,6 +11,11 @@ const found = new Map(); // idx -> { t, by }
 let counts = [];
 let link;
 let typingFromRemote = false;
+let ACH = [];
+const unlocked = new Map(); // id -> timestamp
+let bestStreak = 0;
+let bestMulti = 0;
+const openAch = new Set();
 
 function storageGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
 function storageSet(k, v) { try { localStorage.setItem(k, v); } catch { /* egal */ } }
@@ -116,6 +122,59 @@ function updateStats() {
     if (row.classList.contains('open')) renderMissing(i);
   });
   renderRecent();
+  renderAchievements();
+}
+
+// ---------------------------------------------------------------- Erfolge
+function renderAchievements() {
+  if (!ACH.length) return;
+  const ctx = makeContext(DATA, [...found.entries()].map(([i, v]) => [i, v.t, v.by]), { bestStreak, bestMulti });
+  $('ach-count').textContent = `${unlocked.size} / ${ACH.length}`;
+  const box = $('achievements');
+  box.innerHTML = '';
+  for (const a of ACH) {
+    const done = unlocked.has(a.id);
+    const { cur, max } = progress(a, ctx);
+    const item = document.createElement('div');
+    item.className = `ach${done ? ' done' : ''}${openAch.has(a.id) ? ' open' : ''}`;
+    item.style.setProperty('--t', TIERS[a.tier].color);
+    item.style.setProperty('--p', `${((done ? max : cur) / max) * 100}%`);
+    item.innerHTML = '<button type="button"><span class="ic"></span><span class="tx"><b></b><small></small></span><span class="val"></span><span class="bar"><i></i></span></button>';
+    item.querySelector('.ic').textContent = a.icon;
+    item.querySelector('b').textContent = a.name;
+    item.querySelector('small').textContent = a.desc;
+    item.querySelector('.val').textContent = done
+      ? `✓ ${new Date(unlocked.get(a.id)).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`
+      : `${formatNumber(cur)} / ${formatNumber(max)}`;
+    item.title = `${TIERS[a.tier].name}-Erfolg`;
+    if (a.type === 'set' && !done) {
+      item.querySelector('button').addEventListener('click', () => {
+        if (openAch.has(a.id)) openAch.delete(a.id);
+        else openAch.add(a.id);
+        renderAchievements();
+      });
+      if (openAch.has(a.id)) {
+        const missing = a.set.filter((i) => !found.has(i)).sort((x, y) => DATA.cities[y].p - DATA.cities[x].p);
+        const chips = document.createElement('div');
+        chips.className = 'chips';
+        for (const i of missing) {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.textContent = DATA.cities[i].n;
+          b.addEventListener('click', () => {
+            $('city').value = DATA.cities[i].n;
+            $('city').focus();
+            sendTyping();
+          });
+          chips.appendChild(b);
+        }
+        item.appendChild(chips);
+      }
+    } else {
+      item.querySelector('button').disabled = true;
+    }
+    box.appendChild(item);
+  }
 }
 
 function renderRecent() {
@@ -150,6 +209,7 @@ const SOURCES = [
   { name: 'Nur Karte', size: '760 × 1030', q: { view: 'karte' } },
   { name: 'Nur Eingabe-Leiste', size: '1400 × 210', q: { view: 'eingabe' } },
   { name: 'Nur Statistik', size: '600 × 1680', q: { view: 'statistik' } },
+  { name: 'Nur Erfolge', size: '640 × 1480', q: { view: 'erfolge' } },
 ];
 
 function buildLinks() {
@@ -239,6 +299,10 @@ function setupInput() {
 function onState(msg) {
   found.clear();
   for (const [i, t, by] of msg.found) found.set(i, { t, by });
+  unlocked.clear();
+  for (const [id, t] of msg.achievements || []) unlocked.set(id, t);
+  bestStreak = msg.bestStreak || 0;
+  bestMulti = msg.bestMulti || 0;
   updateStats();
   $('streak').textContent = msg.bestStreak ? `Beste Combo: ${msg.bestStreak}` : '';
   if (msg.typing && document.activeElement !== $('city')) {
@@ -255,6 +319,11 @@ function onResult(r) {
     const names = r.ids.map((i) => `${DATA.cities[i].n} (${DATA.states[DATA.cities[i].s].id})`);
     let text = r.ids.length === 1 ? names[0] : `${r.ids.length} Städte: ${names.join(', ')}`;
     if (r.completed?.length) text += ` – ${r.completed.map((s) => DATA.states[s].name).join(', ')} komplett!`;
+    bestStreak = r.bestStreak ?? bestStreak;
+    bestMulti = r.bestMulti ?? bestMulti;
+    const freshAch = ACH.filter((a) => (r.achievements || []).includes(a.id));
+    for (const a of freshAch) unlocked.set(a.id, r.t0);
+    if (freshAch.length) text += ` 🏆 ${freshAch.map((a) => a.name).join(', ')}`;
     setResult('found', r.ids.length > 1 ? `+${r.ids.length}` : '+1', text);
     $('streak').textContent = `Combo ${r.streak} · Beste: ${r.bestStreak}`;
     updateStats();
@@ -301,8 +370,25 @@ function setupPreview() {
 }
 
 // ---------------------------------------------------------------- Start
+// Eingabefeld klebt beim Scrollen oben und wird dabei kompakter
+function setupStickyInput() {
+  const header = document.querySelector('.top');
+  const card = $('input-card');
+  const sentinel = $('input-sentinel');
+  const update = () => {
+    const h = header.offsetHeight;
+    document.documentElement.style.setProperty('--header-h', `${h}px`);
+    card.classList.toggle('stuck', sentinel.getBoundingClientRect().top < h + 4);
+  };
+  addEventListener('scroll', update, { passive: true });
+  addEventListener('resize', update);
+  update();
+}
+
 async function main() {
+  setupStickyInput();
   DATA = await fetch('/data/germany.json').then((r) => r.json());
+  ACH = buildAchievements(DATA);
   buildStates();
   updateStats();
   setupInput();

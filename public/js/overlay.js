@@ -3,6 +3,7 @@ import { STATE_COLORS, formatNumber } from './game.js';
 import { NeonMap } from './map.js';
 import { Link } from './net.js';
 import { Sound } from './sound.js';
+import { TIERS, buildAchievements, makeContext, progress, closestGoals } from './achievements.js';
 
 const params = new URLSearchParams(location.search);
 const flag = (name, def) => {
@@ -15,7 +16,10 @@ const LAYOUT_ALIASES = {
   hoch: 'hoch', tiktok: 'hoch', portrait: 'hoch', vertical: 'hoch', vertikal: 'hoch', '9x16': 'hoch',
   quer: 'quer', youtube: 'quer', landscape: 'quer', horizontal: 'quer', obs: 'quer', '16x9': 'quer',
 };
-const VIEW_ALIASES = { map: 'map', karte: 'map', typing: 'typing', eingabe: 'typing', stats: 'stats', statistik: 'stats' };
+const VIEW_ALIASES = {
+  map: 'map', karte: 'map', typing: 'typing', eingabe: 'typing', stats: 'stats', statistik: 'stats',
+  erfolge: 'erfolge', achievements: 'erfolge',
+};
 const VIEW = VIEW_ALIASES[(params.get('view') || '').toLowerCase()] || 'full';
 const FORCED_LAYOUT = LAYOUT_ALIASES[(params.get('layout') || '').toLowerCase()] || null;
 const WITH_BG = flag('bg', VIEW === 'full');
@@ -26,6 +30,7 @@ const STAGE = {
   map: [760, 1030],
   typing: [1400, 210],
   stats: [600, 1680],
+  erfolge: [640, 1480],
 };
 
 const $ = (id) => document.getElementById(id);
@@ -51,10 +56,22 @@ let msgTimer = null;
 const bannerQueue = [];
 let bannerBusy = false;
 
+// Erfolge
+let ACH = [];
+const unlocked = new Map(); // id -> timestamp
+const foundMeta = new Map(); // cityIdx -> { t, by }
+let bestStreak = 0;
+let bestMulti = 0;
+const recentUnlock = new Map(); // id -> performance.now() beim Freischalten
+const toastQueue = [];
+let toastBusy = false;
+let rotateTimer = null;
+const ROTATES = VIEW === 'full' || VIEW === 'stats';
+
 // ---------------------------------------------------------------- Layout
 function chooseLayout() {
   if (VIEW === 'typing') return 'quer';
-  if (VIEW === 'map' || VIEW === 'stats') return 'quer';
+  if (VIEW !== 'full') return 'quer';
   if (FORCED_LAYOUT) return FORCED_LAYOUT;
   return innerWidth < innerHeight ? 'hoch' : 'quer';
 }
@@ -78,7 +95,7 @@ function applyLayout() {
   const ox = (innerWidth - W * stageScale) / 2;
   const oy = (innerHeight - H * stageScale) / 2;
   stage.style.transform = `translate(${ox}px, ${oy}px) scale(${stageScale})`;
-  if (map && VIEW !== 'typing' && VIEW !== 'stats') {
+  if (map && (VIEW === 'full' || VIEW === 'map')) {
     const box = $('mapbox');
     const dpr = Math.min(2.5 / stageScale, window.devicePixelRatio || 1);
     map.setLayout({
@@ -87,7 +104,10 @@ function applyLayout() {
     });
   }
   fitTyped();
-  if (map) updateStats();
+  if (map) {
+    updateStats();
+    renderAchievements();
+  }
 }
 
 function cometOrigin() {
@@ -281,10 +301,150 @@ function nextBanner() {
   setTimeout(nextBanner, 3300);
 }
 
+// ---------------------------------------------------------------- Erfolge
+function hexA(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+function tierVars(el, tier) {
+  const c = TIERS[tier].color;
+  el.style.setProperty('--t', c);
+  el.style.setProperty('--ta', hexA(c, 0.45));
+  el.style.setProperty('--tb', hexA(c, 0.22));
+}
+
+function achContext() {
+  const list = [...foundMeta.entries()].map(([i, v]) => [i, v.t, v.by]);
+  return makeContext(DATA, list, { bestStreak, bestMulti });
+}
+
+function goalRow(a, cur, max, { done = false, fresh = false } = {}) {
+  const row = document.createElement('div');
+  row.className = `goal${done ? ' done' : ' locked'}${fresh ? ' fresh' : ''}`;
+  tierVars(row, a.tier);
+  row.style.setProperty('--p', `${(cur / max) * 100}%`);
+  row.innerHTML = '<span class="ic"></span><span class="gn"></span><span class="gv"></span><span class="gbar"><b></b></span>';
+  row.querySelector('.ic').textContent = a.icon;
+  row.querySelector('.gn').textContent = a.name;
+  row.querySelector('.gv').textContent = done ? '✓' : `${formatNumber(cur)} / ${formatNumber(max)}`;
+  return row;
+}
+
+function renderAchievements() {
+  if (!ACH.length) return;
+  const nowMs = performance.now();
+  for (const [id, t] of recentUnlock) if (nowMs - t > 90_000) recentUnlock.delete(id);
+  const freshIds = [...recentUnlock.keys()];
+  const isNew = (id) => recentUnlock.has(id) && nowMs - recentUnlock.get(id) < 3000;
+  const ctx = achContext();
+  const tr = $('trophies');
+  tr.querySelector('b').textContent = unlocked.size;
+  tr.querySelector('span').textContent = ACH.length;
+  const countText = `${unlocked.size} / ${ACH.length}`;
+  $('goals-count').textContent = countText;
+  $('ach-all-count').textContent = countText;
+
+  // "Fast geschafft": zuerst gerade Freigeschaltetes, dann die nächsten Ziele
+  const n = layout === 'hoch' && VIEW === 'full' ? 6 : 5;
+  const list = $('goals-list');
+  list.innerHTML = '';
+  const recent = ACH.filter((a) => freshIds.includes(a.id)).sort((x, y) => recentUnlock.get(y.id) - recentUnlock.get(x.id));
+  for (const a of recent.slice(0, 2)) list.appendChild(goalRow(a, a.max, a.max, { done: true, fresh: isNew(a.id) }));
+  const goals = closestGoals(ACH, ctx, unlocked, n - Math.min(recent.length, 2));
+  for (const g of goals) list.appendChild(goalRow(g.a, g.cur, g.max));
+  if (!list.children.length) {
+    const p = document.createElement('div');
+    p.className = 'goals-empty';
+    p.textContent = 'Alle Erfolge freigeschaltet! 🏆';
+    list.appendChild(p);
+  }
+
+  if (VIEW === 'erfolge') {
+    const all = $('ach-all-list');
+    all.innerHTML = '';
+    const sorted = [...ACH].sort((x, y) => (unlocked.has(y.id) - unlocked.has(x.id)));
+    for (const a of sorted) {
+      const { cur, max } = progress(a, ctx);
+      all.appendChild(goalRow(a, unlocked.has(a.id) ? max : cur, max, { done: unlocked.has(a.id), fresh: isNew(a.id) }));
+    }
+  }
+}
+
+function setGoalsVisible(on) {
+  body.classList.toggle('show-goals', on);
+}
+
+function startRotation() {
+  if (!ROTATES) return;
+  clearInterval(rotateTimer);
+  rotateTimer = setInterval(() => setGoalsVisible(!body.classList.contains('show-goals')), 14000);
+}
+
+function showGoalsNow() {
+  if (!ROTATES) return;
+  setGoalsVisible(true);
+  startRotation(); // Timer neu starten, damit die Liste eine Weile sichtbar bleibt
+}
+
+function toast(a) {
+  toastQueue.push(a);
+  if (!toastBusy) nextToast();
+}
+
+function nextToast() {
+  const a = toastQueue.shift();
+  if (!a) { toastBusy = false; return; }
+  toastBusy = true;
+  const el = $('achv');
+  tierVars(el, a.tier);
+  el.querySelector('.achv-ic').textContent = a.icon;
+  el.querySelector('.achv-lb').textContent = `Erfolg freigeschaltet · ${TIERS[a.tier].name}`;
+  el.querySelector('.achv-nm').textContent = a.name;
+  el.querySelector('.achv-ds').textContent = a.desc;
+  // stehen weitere Erfolge an, jede Karte kürzer zeigen
+  const dur = toastQueue.length ? 3000 : 4800;
+  el.style.animationDuration = `${dur}ms`;
+  el.classList.remove('show');
+  void el.offsetWidth;
+  el.classList.add('show');
+  sound.achievement(a.tier);
+  highlightAchievement(a);
+  setTimeout(nextToast, dur + 100);
+}
+
+/** Die Städte des Erfolgs auf der Karte aufblitzen lassen */
+function highlightAchievement(a) {
+  if (!map?.layout || a.type !== 'set') return;
+  const color = TIERS[a.tier].color;
+  const ids = a.set.filter((i) => map.found.has(i)).slice(0, 60);
+  ids.forEach((i, n) => {
+    setTimeout(() => {
+      const p = map.cityPos(i);
+      map.effects.push({ type: 'ring', x: p.x, y: p.y, color, t0: performance.now() / 1000, dur: 1.2, r: 46 });
+      map.effects.push({ type: 'twinkle', x: p.x, y: p.y, color, t0: performance.now() / 1000, dur: 1.2 });
+    }, 300 + n * Math.min(90, 1500 / ids.length));
+  });
+}
+
+function bumpTrophies() {
+  const tr = $('trophies');
+  tr.classList.remove('bump');
+  void tr.offsetWidth;
+  tr.classList.add('bump');
+}
+
 // ---------------------------------------------------------------- Server-Events
 function onState(msg) {
   const ids = msg.found.map(([i]) => i);
   map.setFound(ids);
+  foundMeta.clear();
+  for (const [i, t, by] of msg.found) foundMeta.set(i, { t, by });
+  unlocked.clear();
+  for (const [id, t] of msg.achievements || []) unlocked.set(id, t);
+  bestStreak = msg.bestStreak || 0;
+  bestMulti = msg.bestMulti || 0;
+  renderAchievements();
   feedItems.length = 0;
   for (const [i, t, by] of [...msg.found].reverse()) feedItems.push({ i, t, by });
   renderFeed();
@@ -317,6 +477,7 @@ function scheduleStats(touched, newIds) {
     statsTimer = null;
     renderFeed([...pendingFeed]);
     updateStats({ bump: true, flashStates: [...pendingTouched] });
+    renderAchievements();
     pendingTouched.clear();
     pendingFeed.clear();
   }, 650);
@@ -336,6 +497,20 @@ function onResult(r) {
       ? `✓ ${names[0]} · ${stateName}${extra}`
       : `✓ ${r.ids.length} Städte: ${names.join(', ')}${extra}`, color);
     map.addFound(r.ids, { origin: cometOrigin(), animate: !flood });
+    for (const i of r.ids) foundMeta.set(i, { t: r.t0, by: r.by });
+    bestStreak = r.bestStreak ?? bestStreak;
+    bestMulti = r.bestMulti ?? bestMulti;
+    const freshAch = ACH.filter((a) => (r.achievements || []).includes(a.id));
+    for (const a of freshAch) unlocked.set(a.id, r.t0);
+    if (freshAch.length) {
+      for (const a of freshAch) recentUnlock.set(a.id, performance.now());
+      setTimeout(() => {
+        showGoalsNow();
+        bumpTrophies();
+      }, 700);
+      // bei Massen-Eingaben nur die wichtigsten Karten zeigen
+      for (const a of flood ? freshAch.slice(-1) : freshAch) setTimeout(() => toast(a), 900);
+    }
     for (const i of r.ids) feedItems.unshift({ i, t: r.t0, by: r.by });
     feedItems.length = Math.min(feedItems.length, 40);
     scheduleStats(r.ids.map((i) => DATA.cities[i].s), r.ids);
@@ -351,7 +526,8 @@ function onResult(r) {
       }
       banner(DATA.states[s].name, 'komplett beleuchtet!', STATE_COLORS[s]);
     }
-    if (r.milestone && !r.win) {
+    const countAch = freshAch.some((a) => a.type === 'count');
+    if (r.milestone && !r.win && !countAch) {
       banner(`${formatNumber(r.milestone)} Städte!`, 'Deutschland wird heller', '#b6ff3b');
       if (!flood) setTimeout(() => sound.milestone(), 900);
     }
@@ -391,6 +567,8 @@ function onResult(r) {
 
 function onRemoved(msg) {
   map.removeFound(msg.ids);
+  for (const i of msg.ids) foundMeta.delete(i);
+  renderAchievements();
   for (let k = feedItems.length - 1; k >= 0; k--) if (msg.ids.includes(feedItems[k].i)) feedItems.splice(k, 1);
   renderFeed();
   updateStats();
@@ -400,10 +578,13 @@ function onRemoved(msg) {
 async function main() {
   DATA = await fetch('/data/germany.json').then((r) => r.json());
   map = new NeonMap(canvas, DATA, { hints: flag('hints', true) });
+  ACH = buildAchievements(DATA);
   window.neonMap = map; // für Fehlersuche in der Browser-Konsole
   buildStates();
   renderFeed();
   applyLayout();
+  renderAchievements();
+  startRotation();
   map.start();
   addEventListener('resize', applyLayout);
   document.fonts?.load('30px "Tilt Neon"').then(() => fitTyped()).catch(() => {});

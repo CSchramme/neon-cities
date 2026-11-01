@@ -189,6 +189,8 @@ def main(xlsx_path, geo_path):
                 c["a"] = aliases
             if disp in CAPITALS:
                 c["cap"] = 1
+            if "Hanse" in r[7]:
+                c["h"] = 1  # Hansestadt (für den Erfolg "Die Hanse")
             cities.append(c)
         elif tk in ("60", "64"):
             gemeinden.append([official, s, "Markt" if tk == "60" else "Gemeinde"])
