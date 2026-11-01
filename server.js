@@ -57,6 +57,7 @@ function loadState() {
       if (i !== undefined) found.set(i, { t: v.t || Date.now(), by: v.by || '' });
     }
     bestStreak = raw.bestStreak || 0;
+    streak = raw.streak || 0; // laufende Combo übersteht einen Neustart
     bestMulti = raw.bestMulti || 0;
     for (const [id, t] of Object.entries(raw.achievements || {})) {
       if (ACHIEVEMENTS.some((a) => a.id === id)) unlocked.set(id, t);
@@ -73,7 +74,7 @@ function saveState() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     const out = {
-      savedAt: new Date().toISOString(), bestStreak, bestMulti,
+      savedAt: new Date().toISOString(), streak, bestStreak, bestMulti,
       achievements: Object.fromEntries(unlocked), found: {},
     };
     for (const [i, v] of found) out.found[CITIES[i].id] = v;
@@ -135,6 +136,7 @@ function handleSubmit(rawText, rawBy) {
 
   if (matches.length === 0) {
     streak = 0;
+    saveState();
     const g = gemIndex.match(input)[0];
     const gem = g !== undefined ? { n: GEMEINDEN[g][0], s: GEMEINDEN[g][1], k: GEMEINDEN[g][2] } : null;
     broadcast({ t: 'result', kind: 'miss', input, by, gem, streak });

@@ -110,6 +110,16 @@ Beim Start zeigt das Server-Fenster eine Adresse wie `http://192.168.178.23:3000
 - Bayerische Abkürzungen gehen auch: `Weiden i.d.OPf.` = Weiden in der Oberpfalz.
 - Falsch eingetippt? Auf der Steuerseite unter *Zuletzt gefunden* auf **↩ zurück** klicken.
 
+## Spielstand
+
+Alles wird automatisch in **`spielstand.json`** im Projektordner gespeichert, nach jeder Änderung:
+
+- alle leuchtenden Städte mit Uhrzeit und „Tipp von“-Namen
+- freigeschaltete Erfolge
+- laufende und beste Combo, größter Mega-Treffer
+
+Der Fortschritt zu den nächsten Erfolgen (z. B. „Hauptstadt-Tour 12 / 16“ oder „Teamwork 7 / 10“) wird daraus berechnet und geht deshalb ebenfalls nicht verloren. Zum Sichern die Datei kopieren, bei einer neuen Version in den neuen Ordner mitnehmen.
+
 ## Online statt lokal betreiben (optional)
 
 Der Server läuft auch bei Hostern mit WebSocket-Unterstützung (z. B. Render, Railway, Fly.io). Dann solltest du die Steuerung mit einem Passwort schützen:
