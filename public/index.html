@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07051a">
+  <title>Neon Cities – Steuerung</title>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/control.css">
+</head>
+<body class="control">
+  <header class="top">
+    <div class="brand">
+      <span class="neon-a">NEON</span> <span class="neon-b">CITIES</span>
+      <small>Steuerung</small>
+    </div>
+    <div class="top-stats">
+      <span id="count" class="count">0</span><span class="of">/ <span id="total">2.060</span></span>
+      <span id="pct" class="pct">0,0 %</span>
+    </div>
+    <div id="status" class="status off"><i></i><span>Verbinde …</span></div>
+  </header>
+
+  <main class="layout">
+    <div class="col">
+      <section class="card input-card">
+        <form id="form" autocomplete="off">
+          <label for="city" class="label">Stadt eingeben</label>
+          <div class="input-row">
+            <input id="city" name="city" type="text" placeholder="z. B. München" autocomplete="off"
+                   autocapitalize="words" spellcheck="false" enterkeyhint="send" maxlength="80" autofocus>
+            <button type="submit" class="btn-go" title="Enter">Leuchten <kbd>⏎</kbd></button>
+          </div>
+          <div class="by-row">
+            <input id="by" type="text" placeholder="Tipp von … (optional, z. B. @zuschauer)" maxlength="40" autocomplete="off" spellcheck="false">
+            <label class="check"><input id="keepBy" type="checkbox"> Name behalten</label>
+          </div>
+        </form>
+        <div id="result" class="result">Jeder Buchstabe erscheint sofort live in allen Browserquellen.</div>
+        <p class="hint"><kbd>Enter</kbd> abschicken · <kbd>Esc</kbd> leeren · Groß-/Kleinschreibung, Umlaute (ae/ä) und Zusätze wie „am Main“ sind egal.</p>
+      </section>
+
+      <section class="card preview-card">
+        <div class="card-head">
+          <h2>Live-Vorschau</h2>
+          <div class="seg" id="preview-switch">
+            <button data-layout="quer" class="on">Quer · YouTube</button>
+            <button data-layout="hoch">Hoch · TikTok</button>
+          </div>
+        </div>
+        <div id="preview" class="preview quer">
+          <iframe id="preview-frame" title="Overlay-Vorschau" src="/overlay?layout=quer&sound=0&preview=1"></iframe>
+        </div>
+      </section>
+
+      <section class="card links-card">
+        <div class="card-head">
+          <h2>Browserquellen</h2>
+          <span class="sub">für OBS, TikTok LIVE Studio, Streamlabs</span>
+        </div>
+        <div class="opts">
+          <label class="check"><input type="checkbox" id="opt-transparent"> Transparenter Hintergrund</label>
+          <label class="check"><input type="checkbox" id="opt-nosound"> Ohne Sound</label>
+          <label class="check"><input type="checkbox" id="opt-noticks"> Ohne Tipp-Klicken</label>
+          <label class="check"><input type="checkbox" id="opt-nohints"> Dunkle Städte ausblenden</label>
+        </div>
+        <div id="links" class="links"></div>
+        <details class="howto">
+          <summary>So fügst du die Quelle ein</summary>
+          <ol>
+            <li><b>OBS / Streamlabs:</b> Quellen → <i>+</i> → <i>Browser</i> → Link einfügen, Breite/Höhe wie angegeben eintragen. Für Sound: „Audio über OBS steuern“ anhaken.</li>
+            <li><b>TikTok LIVE Studio:</b> Quelle hinzufügen → <i>Link</i> (Website) → Hochformat-Link einfügen, Größe 1080 × 1920.</li>
+            <li>Alle Quellen synchronisieren automatisch – du kannst so viele hinzufügen, wie du willst.</li>
+            <li>Tippen geht auch vom Handy: im gleichen WLAN die Netzwerk-Adresse aus dem Server-Fenster öffnen.</li>
+          </ol>
+        </details>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="card states-card">
+        <div class="card-head">
+          <h2>Bundesländer</h2>
+          <span class="sub">Klick zeigt fehlende Städte</span>
+        </div>
+        <div id="states" class="states"></div>
+      </section>
+
+      <section class="card recent-card">
+        <div class="card-head">
+          <h2>Zuletzt gefunden</h2>
+          <span class="sub" id="streak"></span>
+        </div>
+        <ol id="recent" class="recent"></ol>
+      </section>
+
+      <section class="card danger-card">
+        <div class="card-head"><h2>Spiel</h2></div>
+        <p class="sub">Der Spielstand wird automatisch gespeichert (spielstand.json) und übersteht einen Neustart.</p>
+        <button id="reset" class="btn-danger">Alles zurücksetzen</button>
+      </section>
+    </div>
+  </main>
+
+  <div id="keybox" class="keybox" hidden>
+    <form id="keyform" class="card">
+      <h2>Passwort für die Steuerung</h2>
+      <p class="sub">Der Server wurde mit Passwort gestartet.</p>
+      <input id="keyinput" type="password" placeholder="Passwort" autocomplete="current-password">
+      <button type="submit" class="btn-go">Entsperren</button>
+    </form>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script type="module" src="/js/control.js"></script>
+</body>
+</html>

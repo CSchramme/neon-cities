@@ -1,0 +1,14 @@
+{
+  "name": "neon-cities",
+  "version": "1.0.0",
+  "description": "Neon Cities – Lass ganz Deutschland leuchten! Stream-Overlay für TikTok, YouTube & OBS mit Live-Sync.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js --open"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

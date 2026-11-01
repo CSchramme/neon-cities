@@ -1,0 +1,5 @@
+node_modules/
+spielstand.json
+spielstand.json.tmp
+.DS_Store
+Thumbs.db

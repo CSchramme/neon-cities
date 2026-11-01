@@ -1,0 +1,67 @@
+@font-face {
+  font-family: 'Tilt Neon';
+  src: url('/fonts/tilt-neon.woff2') format('woff2');
+  font-weight: 400;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Orbitron';
+  src: url('/fonts/orbitron.woff2') format('woff2');
+  font-weight: 400 900;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Rajdhani';
+  src: url('/fonts/rajdhani-500.woff2') format('woff2');
+  font-weight: 500;
+}
+@font-face {
+  font-family: 'Rajdhani';
+  src: url('/fonts/rajdhani-600.woff2') format('woff2');
+  font-weight: 600;
+}
+@font-face {
+  font-family: 'Rajdhani';
+  src: url('/fonts/rajdhani-700.woff2') format('woff2');
+  font-weight: 700;
+}
+
+:root {
+  --bg: #07051a;
+  --bg-2: #120a33;
+  --ink: #ecebff;
+  --muted: #9a95c9;
+  --line: rgba(160, 150, 255, 0.16);
+  --panel: rgba(16, 10, 44, 0.62);
+  --pink: #ff2bd6;
+  --cyan: #00f0ff;
+  --lime: #b6ff3b;
+  --amber: #ffb020;
+  --red: #ff3355;
+  --font-neon: 'Tilt Neon', 'Rajdhani', system-ui, sans-serif;
+  --font-hud: 'Orbitron', 'Rajdhani', system-ui, sans-serif;
+  --font-ui: 'Rajdhani', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  color: var(--ink);
+  font-family: var(--font-ui);
+}
+
+.neon-a {
+  color: #ffe8fb;
+  text-shadow: 0 0 2px #fff, 0 0 8px var(--pink), 0 0 18px var(--pink), 0 0 42px var(--pink), 0 0 80px rgba(255, 43, 214, 0.6);
+}
+.neon-b {
+  color: #e6fdff;
+  text-shadow: 0 0 2px #fff, 0 0 8px var(--cyan), 0 0 18px var(--cyan), 0 0 42px var(--cyan), 0 0 80px rgba(0, 240, 255, 0.6);
+}
+
+@keyframes flicker {
+  0%, 18%, 22%, 25%, 53%, 57%, 100% { opacity: 1; }
+  20%, 24%, 55% { opacity: 0.35; }
+}

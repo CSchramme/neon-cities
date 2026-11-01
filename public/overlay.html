@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Neon Cities Overlay</title>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/overlay.css">
+</head>
+<body class="overlay">
+  <div id="stage">
+    <div class="backdrop" aria-hidden="true">
+      <div class="glow-a"></div>
+      <div class="glow-b"></div>
+      <div class="floor"></div>
+    </div>
+
+    <canvas id="fx"></canvas>
+    <div id="mapbox"></div>
+
+    <header id="title">
+      <div class="logo"><span class="neon-a">NEON</span> <span class="neon-b">CITIES</span></div>
+      <div class="tagline">Lass ganz Deutschland leuchten</div>
+    </header>
+
+    <section id="stats" class="panel">
+      <div class="count-row">
+        <span id="count" class="count">0</span>
+        <span class="of">/ <span id="total">2.060</span></span>
+      </div>
+      <div class="count-label">Städte leuchten</div>
+      <div class="bar"><div id="bar-segs" class="segs"></div></div>
+      <div class="meta-row">
+        <span id="pct" class="pct">0,0 %</span>
+        <span id="combo" class="combo"></span>
+      </div>
+    </section>
+
+    <section id="feed" class="panel">
+      <h3>Zuletzt aufgeleuchtet</h3>
+      <ol id="feed-list"></ol>
+    </section>
+
+    <section id="states" class="panel">
+      <h3>Bundesländer</h3>
+      <div id="state-list"></div>
+    </section>
+
+    <div id="typing">
+      <div class="typing-head">
+        <span class="typing-label">Stadt eingeben</span>
+        <span id="typing-by" class="typing-by"></span>
+      </div>
+      <div class="typing-line">
+        <span class="prompt">&gt;</span>
+        <span id="typed" class="typed"></span><span class="caret"></span>
+      </div>
+      <div id="typing-msg" class="typing-msg"></div>
+    </div>
+
+    <div id="banner" class="banner"></div>
+    <div id="offline" class="offline">Verbinde mit Neon-Server …</div>
+  </div>
+
+  <script type="module" src="/js/overlay.js"></script>
+</body>
+</html>
