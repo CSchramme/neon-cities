@@ -64,6 +64,8 @@ Damit kommen WebSockets durch, und jeder Buchstabe erscheint ohne Umweg. Kann od
 - **Overlay TikTok:** `https://neon.deinedomain.de/overlay?layout=hoch` (1080 × 1920)
 - **Overlay YouTube/OBS:** `https://neon.deinedomain.de/overlay?layout=quer` (1920 × 1080)
 
+- **Spiel-Seite (Overlay mit Eingabe):** `https://neon.deinedomain.de/spielen`. Spielbild und Eingabe in einem Fenster, fragt einmal nach dem Passwort.
+
 Die fertigen Links zum Kopieren stehen auch auf der Steuerseite unter **Browserquellen**. Trag sie in OBS oder TikTok LIVE Studio genauso ein wie in der [README](README.md#overlay-in-den-stream-einbauen) beschrieben, nur eben mit deiner Adresse statt `localhost:3000`.
 
 Tippen kannst du jetzt von überall aus, auch vom Handy über das mobile Netz.

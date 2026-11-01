@@ -204,6 +204,7 @@ function renderRecent() {
 
 // ---------------------------------------------------------------- Browserquellen
 const SOURCES = [
+  { name: 'Spielen · Overlay mit Eingabe (Quer/Hoch automatisch)', size: 'beliebig', q: {}, path: '/spielen' },
   { name: 'TikTok LIVE · Hochformat', size: '1080 × 1920', q: { layout: 'hoch' } },
   { name: 'YouTube / OBS · Querformat', size: '1920 × 1080', q: { layout: 'quer' } },
   { name: 'Nur Karte', size: '760 × 1030', q: { view: 'karte' } },
@@ -225,7 +226,8 @@ function buildLinks() {
     if (nosound) q.set('sound', '0');
     if (noticks && !nosound) q.set('ticks', '0');
     if (nohints) q.set('hints', '0');
-    const url = `${location.origin}/overlay?${q.toString()}`;
+    const qs = q.toString();
+    const url = `${location.origin}${src.path || '/overlay'}${qs ? `?${qs}` : ''}`;
     const row = document.createElement('div');
     row.className = 'link';
     row.innerHTML = '<span class="name"></span><code></code><button type="button">Kopieren</button>';

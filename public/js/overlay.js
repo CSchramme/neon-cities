@@ -23,6 +23,14 @@ const VIEW_ALIASES = {
 const VIEW = VIEW_ALIASES[(params.get('view') || '').toLowerCase()] || 'full';
 const FORCED_LAYOUT = LAYOUT_ALIASES[(params.get('layout') || '').toLowerCase()] || null;
 const WITH_BG = flag('bg', VIEW === 'full');
+// Spiel-Seite: Overlay, in das man direkt tippen kann (/spielen oder ?schreiben=1 bzw. ?writeable=1)
+const WRITE = (/^\/(spielen|play)\/?$/.test(location.pathname)
+  || ['schreiben', 'writeable', 'writable', 'write', 'tippen'].some((k) => flag(k, false)))
+  && (VIEW === 'full' || VIEW === 'typing');
+
+function storageGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
+function storageSet(k, v) { try { localStorage.setItem(k, v); } catch { /* egal */ } }
+if (params.get('key')) storageSet('nc-key', params.get('key'));
 
 const STAGE = {
   quer: [1920, 1080],
@@ -578,6 +586,116 @@ function onRemoved(msg) {
   updateStats();
 }
 
+// ---------------------------------------------------------------- Direkt im Overlay tippen
+/** "München @lisa" -> Stadt "München", Tipp von "@lisa" */
+function parseEntry(raw) {
+  const m = String(raw).match(/^(.*?)\s+@(.*)$/);
+  if (!m) return { text: String(raw), by: '' };
+  const by = m[2].trim();
+  return { text: m[1], by: by ? `@${by}` : '' };
+}
+
+function setupWriter(link) {
+  body.classList.add('writeable');
+  const box = $('typing');
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.id = 'w-input';
+  input.className = 'w-input';
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.maxLength = 120;
+  input.setAttribute('autocapitalize', 'words');
+  input.setAttribute('enterkeyhint', 'send');
+  input.setAttribute('aria-label', 'Stadt eingeben');
+  box.appendChild(input);
+  const hint = document.createElement('div');
+  hint.className = 'write-hint';
+  box.appendChild(hint);
+  const setHint = (t) => { hint.textContent = t; };
+  setHint('Klicken & tippen · Enter = leuchten · „Stadt @name“ = Tipp von');
+
+  let locked = false;
+  const askKey = () => {
+    input.value = '';
+    const k = window.prompt('Zum Tippen wird das Passwort (NEON_KEY) gebraucht:');
+    if (k) {
+      storageSet('nc-key', k);
+      location.reload();
+    }
+  };
+  const sendTyping = () => {
+    const { text, by } = parseEntry(input.value);
+    const grew = renderTyped(text);
+    setBy(by);
+    if (grew) sound.tick();
+    link.send({ t: 'type', text, by });
+  };
+
+  input.addEventListener('input', () => {
+    if (locked) return askKey();
+    sendTyping();
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (locked) return askKey();
+      const { text, by } = parseEntry(input.value.trim());
+      if (!text.trim()) return;
+      if (!link.send({ t: 'submit', text: text.trim(), by })) {
+        showMsg('miss', 'Keine Verbindung zum Server');
+        return;
+      }
+      input.value = '';
+    } else if (e.key === 'Escape') {
+      input.value = '';
+      sendTyping();
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !input.value) {
+      // Strg+Z bei leerem Feld: zuletzt gefundene Stadt wieder ausschalten
+      e.preventDefault();
+      const last = feedItems[0];
+      if (last && !locked) {
+        link.send({ t: 'undo', i: last.i });
+        showMsg('already', `Rückgängig: ${DATA.cities[last.i].n}`);
+      }
+    }
+  });
+  input.addEventListener('focus', () => body.classList.add('focused'));
+  input.addEventListener('blur', () => body.classList.remove('focused'));
+  // Klick irgendwo ins Bild oder einfach lostippen: Eingabe bekommt den Fokus
+  document.addEventListener('pointerdown', (e) => {
+    if (e.target !== input) {
+      e.preventDefault();
+      input.focus();
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (document.activeElement !== input && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) input.focus();
+  }, true);
+
+  // Andere Steuerungen tippen: Feld mitziehen
+  link.on('type', (m) => {
+    if (parseEntry(input.value).text !== m.text) input.value = m.text;
+  });
+  link.on('state', (m) => {
+    input.value = m.typing?.text || '';
+  });
+  link.on('result', (r) => {
+    if (parseEntry(input.value.trim()).text.trim() === r.input) input.value = '';
+  });
+  link.on('welcome', (w) => {
+    locked = !!(w.needKey && !w.authed);
+    body.classList.toggle('write-locked', locked);
+    setHint(locked ? 'Zum Tippen Passwort nötig – hier klicken' : 'Klicken & tippen · Enter = leuchten · „Stadt @name“ = Tipp von');
+  });
+  link.on('denied', () => {
+    locked = true;
+    body.classList.add('write-locked');
+    showMsg('miss', 'Passwort fehlt oder ist falsch');
+  });
+  setTimeout(() => input.focus(), 300);
+}
+
 // ---------------------------------------------------------------- Start
 async function main() {
   DATA = await fetch('/data/germany.json').then((r) => r.json());
@@ -593,7 +711,8 @@ async function main() {
   addEventListener('resize', applyLayout);
   document.fonts?.load('30px "Tilt Neon"').then(() => fitTyped()).catch(() => {});
 
-  const link = new Link(flag('preview', false) ? 'preview' : 'overlay');
+  const link = new Link(flag('preview', false) ? 'preview' : 'overlay', { key: WRITE ? storageGet('nc-key') || '' : '' });
+  if (WRITE) setupWriter(link);
   let offlineTimer = null;
   const offline = $('offline');
   const setOffline = (on) => {

@@ -52,6 +52,7 @@ Alle Links findest du auch auf der Steuerseite unter **Browserquellen**, dort ka
 | Nur Eingabe-Leiste | `http://localhost:3000/overlay?view=eingabe` | 1400 × 210 |
 | Nur Statistik | `http://localhost:3000/overlay?view=statistik` | 600 × 1680 |
 | Nur Erfolge | `http://localhost:3000/overlay?view=erfolge` | 640 × 1480 |
+| Spielen (Overlay mit Eingabe) | `http://localhost:3000/spielen` | beliebig |
 
 ### OBS Studio / Streamlabs
 
@@ -75,12 +76,26 @@ Hänge sie mit `&` an, z. B. `…/overlay?layout=quer&bg=0&sound=0`.
 | --- | --- |
 | `layout=hoch` / `layout=quer` | Hoch- oder Querformat erzwingen. Ohne Angabe wird es automatisch an der Größe der Quelle erkannt. |
 | `view=karte` / `eingabe` / `statistik` / `erfolge` | nur ein Teil des Overlays (transparent) |
+| `schreiben=1` (oder `writeable=1`) | man kann direkt ins Overlay tippen (siehe [Spiel-Seite](#spiel-seite-overlay-mit-eingabe)) |
 | `bg=0` | transparenter Hintergrund, z. B. über deiner Kamera |
 | `bg=1` | dunkler Neon-Hintergrund (Standard beim kompletten Overlay) |
 | `sound=0` | alle Sounds aus |
 | `ticks=0` | kein Klicken beim Tippen |
 | `vol=40` | Lautstärke 0–100 (Standard 60) |
 | `hints=0` | noch dunkle Städte nicht als kleine Punkte zeigen |
+
+## Spiel-Seite: Overlay mit Eingabe
+
+Unter **`/spielen`** (z. B. `http://localhost:3000/spielen`) gibt es das komplette Overlay, in das du **direkt hineintippen** kannst. Steuerung und Spielbild sind dann in einem Fenster. Hochformat (TikTok) oder Querformat (YouTube) wählt die Seite automatisch nach der Fenstergröße. Erzwingen lässt es sich mit `?layout=hoch` bzw. `?layout=quer`.
+
+Dasselbe geht mit jedem Overlay-Link über das Flag **`schreiben=1`** (oder `writeable=1`), z. B. `…/overlay?layout=hoch&schreiben=1`.
+
+- Einfach lostippen, **Enter** = Stadt leuchten lassen, **Esc** = leeren
+- **„München @lisa“** → München leuchtet, und im Overlay steht „Tipp von @lisa“
+- **Strg + Z** (bei leerem Feld) schaltet die zuletzt gefundene Stadt wieder aus
+- Alles bleibt synchron mit der Steuerseite und allen anderen Overlays
+- Ist ein Passwort (`NEON_KEY`) gesetzt, fragt die Seite einmal danach und merkt es sich
+- In OBS: Rechtsklick auf die Browserquelle → **Interagieren**, dort kannst du tippen. Die normalen Overlay-Links ohne Flag bleiben reine Anzeige.
 
 ## Erfolge
 

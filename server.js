@@ -627,6 +627,8 @@ const ROUTES = {
   '/steuerung': 'index.html',
   '/control': 'index.html',
   '/overlay': 'overlay.html',
+  '/spielen': 'overlay.html', // Overlay mit Eingabe
+  '/play': 'overlay.html',
 };
 
 const server = http.createServer((req, res) => {

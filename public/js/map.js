@@ -197,11 +197,12 @@ export class NeonMap {
     this.burst(p.x, p.y, color, big ? 34 : 14);
     const size = total > 6 ? 18 : total > 2 ? 22 : 30;
     if (this.labels.length >= 8) this.labels.shift();
-    this.labels.push({ text: c.n, x: p.x, y: p.y, color, t0: t, dur: total > 6 ? 3.2 : 4.2, size });
+    this.labels.push({ i, text: c.n, x: p.x, y: p.y, color, t0: t, dur: total > 6 ? 3.2 : 4.2, size });
   }
 
   removeFound(ids) {
     this.foundArray = [];
+    this.labels = this.labels.filter((l) => !ids.includes(l.i));
     for (const i of ids) {
       this.pendingLight.delete(i);
       if (this.found.delete(i)) this.counts[this.cities[i].s]--;
