@@ -474,3 +474,32 @@ kbd {
 }
 .play-link:hover { background: rgba(255, 43, 214, 0.25); }
 @media (max-width: 480px) { .play-link { display: none; } }
+
+/* ---------- Von A bis Z ---------- */
+.ach .abc { grid-column: 2 / 4; display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; }
+.ach .abc span {
+  min-width: 17px;
+  padding: 1px 0;
+  border-radius: 4px;
+  text-align: center;
+  font-family: var(--font-hud);
+  font-size: 11px;
+  font-weight: 700;
+}
+.ach .abc span.on { color: var(--t); text-shadow: 0 0 6px var(--t); }
+.ach .abc span.miss { color: #fff; background: rgba(255, 51, 85, 0.35); box-shadow: inset 0 0 0 1px rgba(255, 140, 160, 0.7); }
+.ach.has-abc > button { grid-template-rows: auto 5px auto; }
+.letter-tips { padding: 0 12px 12px 64px; display: flex; flex-direction: column; gap: 6px; }
+.letter-tips .chips { padding: 0; max-height: none; align-items: center; }
+.letter-tag {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  font-family: var(--font-hud);
+  font-weight: 900;
+  color: #fff;
+  background: rgba(255, 51, 85, 0.4);
+  box-shadow: 0 0 10px rgba(255, 51, 85, 0.6);
+}

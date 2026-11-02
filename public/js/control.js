@@ -1,7 +1,7 @@
 // Steuerung: hier wird getippt – jeder Buchstabe geht sofort an alle Overlays.
 import { STATE_COLORS, formatNumber } from './game.js';
 import { Link } from './net.js';
-import { TIERS, buildAchievements, makeContext, progress } from './achievements.js';
+import { TIERS, buildAchievements, makeContext, progress, initial } from './achievements.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -147,7 +147,56 @@ function renderAchievements() {
       ? `✓ ${new Date(unlocked.get(a.id)).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`
       : `${formatNumber(cur)} / ${formatNumber(max)}`;
     item.title = `${TIERS[a.tier].name}-Erfolg`;
-    if (a.type === 'set' && !done) {
+    if (a.type === 'letters') {
+      // Alphabet: welche Anfangsbuchstaben fehlen noch?
+      const abc = document.createElement('span');
+      abc.className = 'abc';
+      for (const l of a.letters) {
+        const sp = document.createElement('span');
+        sp.textContent = l;
+        sp.className = done || ctx.letters.has(l) ? 'on' : 'miss';
+        abc.appendChild(sp);
+      }
+      item.querySelector('button').appendChild(abc);
+      item.classList.add('has-abc');
+    }
+    if (a.type === 'letters' && !done) {
+      item.querySelector('button').addEventListener('click', () => {
+        if (openAch.has(a.id)) openAch.delete(a.id);
+        else openAch.add(a.id);
+        renderAchievements();
+      });
+      if (openAch.has(a.id)) {
+        // je fehlendem Buchstaben die größten noch dunklen Städte als Vorschlag
+        const box2 = document.createElement('div');
+        box2.className = 'letter-tips';
+        for (const l of a.letters.filter((x) => !ctx.letters.has(x))) {
+          const row = document.createElement('div');
+          row.className = 'chips';
+          const tag = document.createElement('span');
+          tag.className = 'letter-tag';
+          tag.textContent = l;
+          row.appendChild(tag);
+          const cands = DATA.cities.map((c, i) => i)
+            .filter((i) => !found.has(i) && initial(DATA.cities[i].n) === l)
+            .sort((x, y) => DATA.cities[y].p - DATA.cities[x].p)
+            .slice(0, 8);
+          for (const i of cands) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = DATA.cities[i].n;
+            b.addEventListener('click', () => {
+              $('city').value = DATA.cities[i].n;
+              $('city').focus();
+              sendTyping();
+            });
+            row.appendChild(b);
+          }
+          box2.appendChild(row);
+        }
+        item.appendChild(box2);
+      }
+    } else if (a.type === 'set' && !done) {
       item.querySelector('button').addEventListener('click', () => {
         if (openAch.has(a.id)) openAch.delete(a.id);
         else openAch.add(a.id);
@@ -210,7 +259,7 @@ const SOURCES = [
   { name: 'Nur Karte', size: '760 × 1030', q: { view: 'karte' } },
   { name: 'Nur Eingabe-Leiste', size: '1400 × 210', q: { view: 'eingabe' } },
   { name: 'Nur Statistik', size: '600 × 1680', q: { view: 'statistik' } },
-  { name: 'Nur Erfolge', size: '640 × 1480', q: { view: 'erfolge' } },
+  { name: 'Nur Erfolge', size: '640 × 1840', q: { view: 'erfolge' } },
 ];
 
 function buildLinks() {

@@ -139,6 +139,16 @@ export function progress(a, ctx) {
   return { cur: Math.min(cur, a.max), max: a.max };
 }
 
+/**
+ * Was fehlt noch? letters: fehlende Anfangsbuchstaben, cities: fehlende Städte
+ * (nur bei Erfolgen mit fester Städteliste, nicht bei "25 von 106").
+ */
+export function missing(a, ctx) {
+  if (a.type === 'letters') return { letters: a.letters.filter((l) => !ctx.letters.has(l)) };
+  if (a.type === 'set' && !a.need) return { cities: a.set.filter((i) => !ctx.set.has(i)) };
+  return {};
+}
+
 /** Die noch offenen Erfolge, die am nächsten am Ziel sind */
 export function closestGoals(achievements, ctx, unlocked, n = 5) {
   return achievements

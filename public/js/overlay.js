@@ -3,7 +3,7 @@ import { STATE_COLORS, formatNumber } from './game.js';
 import { NeonMap } from './map.js';
 import { Link } from './net.js';
 import { Sound } from './sound.js';
-import { TIERS, buildAchievements, makeContext, progress, closestGoals } from './achievements.js';
+import { TIERS, buildAchievements, makeContext, progress, closestGoals, missing } from './achievements.js';
 
 const params = new URLSearchParams(location.search);
 const flag = (name, def) => {
@@ -38,7 +38,7 @@ const STAGE = {
   map: [760, 1030],
   typing: [1400, 210],
   stats: [600, 1680],
-  erfolge: [640, 1480],
+  erfolge: [640, 1840],
 };
 
 const $ = (id) => document.getElementById(id);
@@ -75,6 +75,7 @@ const toastQueue = [];
 let toastBusy = false;
 let rotateTimer = null;
 const ROTATES = VIEW === 'full' || VIEW === 'stats';
+const SHOW_TIPS = flag('tipps', true); // ?tipps=0: keine fehlenden Städte verraten
 
 // ---------------------------------------------------------------- Layout
 function chooseLayout() {
@@ -277,6 +278,30 @@ function ghost(kind, text, color) {
   renderTyped('', { animate: false });
 }
 
+// Popup in der Mitte: "keine Stadt", "leuchtet schon", "zurückgenommen" …
+const USE_POPUP = VIEW === 'full' || VIEW === 'map';
+let popTimer = null;
+function popup(kind, title, sub, icon) {
+  if (!USE_POPUP) {
+    showMsg(kind === 'undo' ? 'already' : kind, `${title} – ${sub}`);
+    return;
+  }
+  const el = $('pop');
+  el.className = `pop ${kind}`;
+  el.querySelector('.pop-ic').textContent = icon;
+  el.querySelector('.pop-title').textContent = title;
+  el.querySelector('.pop-sub').textContent = sub;
+  void el.offsetWidth;
+  el.classList.add('show');
+  clearTimeout(popTimer);
+  popTimer = setTimeout(() => el.classList.remove('show'), 3200);
+}
+
+function hidePopup() {
+  clearTimeout(popTimer);
+  $('pop').classList.remove('show');
+}
+
 function showMsg(kind, text, color) {
   const el = $('typing-msg');
   el.className = `typing-msg ${kind} on`;
@@ -298,6 +323,7 @@ function nextBanner() {
   const b = bannerQueue.shift();
   if (!b) { bannerBusy = false; return; }
   bannerBusy = true;
+  hidePopup(); // nicht übereinander
   const el = $('banner');
   el.style.setProperty('--c', b.color);
   el.innerHTML = '<span class="big"></span><span class="small"></span>';
@@ -327,7 +353,31 @@ function achContext() {
   return makeContext(DATA, list, { bestStreak, bestMulti });
 }
 
-function goalRow(a, cur, max, { done = false, fresh = false } = {}) {
+/** Zeigt, was noch fehlt: Alphabet bei "Von A bis Z", sonst die letzten fehlenden Städte */
+function goalDetail(a, ctx, done) {
+  if (a.type === 'letters') {
+    const miss = missing(a, ctx).letters;
+    const el = document.createElement('div');
+    el.className = 'abc';
+    for (const l of a.letters) {
+      const sp = document.createElement('span');
+      sp.textContent = l;
+      if (done || ctx.letters.has(l)) sp.className = 'on';
+      else sp.className = miss.length <= 3 ? 'miss hot' : 'miss';
+      el.appendChild(sp);
+    }
+    return el;
+  }
+  if (done || !SHOW_TIPS) return null;
+  const cities = missing(a, ctx).cities;
+  if (!cities || !cities.length || cities.length > 3) return null;
+  const el = document.createElement('div');
+  el.className = 'gmiss';
+  el.textContent = `fehlt: ${cities.map((i) => DATA.cities[i].n).join(', ')}`;
+  return el;
+}
+
+function goalRow(a, cur, max, { done = false, fresh = false, ctx = null } = {}) {
   const row = document.createElement('div');
   row.className = `goal${done ? ' done' : ' locked'}${fresh ? ' fresh' : ''}`;
   tierVars(row, a.tier);
@@ -336,7 +386,22 @@ function goalRow(a, cur, max, { done = false, fresh = false } = {}) {
   row.querySelector('.ic').textContent = a.icon;
   row.querySelector('.gn').textContent = a.name;
   row.querySelector('.gv').textContent = done ? '✓' : `${formatNumber(cur)} / ${formatNumber(max)}`;
+  const detail = ctx && goalDetail(a, ctx, done);
+  if (detail) {
+    row.classList.add('has-detail');
+    row.appendChild(detail);
+  }
   return row;
+}
+
+/** Nur so viele Ziele zeigen, wie ins Panel passen */
+function fitGoals() {
+  const panel = $('goals');
+  const list = $('goals-list');
+  const hidden = getComputedStyle(panel).display === 'none';
+  if (hidden) panel.classList.add('measure');
+  while (list.children.length > 1 && panel.scrollHeight > panel.clientHeight + 1) list.lastChild.remove();
+  if (hidden) panel.classList.remove('measure');
 }
 
 function renderAchievements() {
@@ -360,13 +425,14 @@ function renderAchievements() {
   const recent = ACH.filter((a) => freshIds.includes(a.id)).sort((x, y) => recentUnlock.get(y.id) - recentUnlock.get(x.id));
   for (const a of recent.slice(0, 2)) list.appendChild(goalRow(a, a.max, a.max, { done: true, fresh: isNew(a.id) }));
   const goals = closestGoals(ACH, ctx, unlocked, n - Math.min(recent.length, 2));
-  for (const g of goals) list.appendChild(goalRow(g.a, g.cur, g.max));
+  for (const g of goals) list.appendChild(goalRow(g.a, g.cur, g.max, { ctx }));
   if (!list.children.length) {
     const p = document.createElement('div');
     p.className = 'goals-empty';
     p.textContent = 'Alle Erfolge freigeschaltet! 🏆';
     list.appendChild(p);
   }
+  if (VIEW === 'full' || VIEW === 'stats') fitGoals();
 
   if (VIEW === 'erfolge') {
     const all = $('ach-all-list');
@@ -374,7 +440,7 @@ function renderAchievements() {
     const sorted = [...ACH].sort((x, y) => (unlocked.has(y.id) - unlocked.has(x.id)));
     for (const a of sorted) {
       const { cur, max } = progress(a, ctx);
-      all.appendChild(goalRow(a, unlocked.has(a.id) ? max : cur, max, { done: unlocked.has(a.id), fresh: isNew(a.id) }));
+      all.appendChild(goalRow(a, unlocked.has(a.id) ? max : cur, max, { done: unlocked.has(a.id), fresh: isNew(a.id), ctx }));
     }
   }
 }
@@ -497,6 +563,7 @@ function scheduleStats(touched, newIds) {
 
 function onResult(r) {
   const flood = isFlood();
+  if (r.kind === 'found') hidePopup();
   if (r.kind === 'found') {
     const first = DATA.cities[r.ids[0]];
     const color = STATE_COLORS[first.s];
@@ -555,7 +622,11 @@ function onResult(r) {
     if (flood) renderTyped('', { animate: false });
     else ghost('already', r.input, '#ffb020');
     const names = r.ids.map((i) => DATA.cities[i].n);
-    showMsg('already', `Leuchtet schon: ${names.slice(0, 4).join(', ')}${names.length > 4 ? ' …' : ''}`);
+    const states = [...new Set(r.ids.map((i) => DATA.states[DATA.cities[i].s].name))];
+    popup('already',
+      names.length === 1 ? names[0] : `${names.length}× ${r.input}`,
+      names.length === 1 ? `leuchtet schon · ${states[0]}` : `leuchten alle schon · ${names.slice(0, 3).join(', ')}${names.length > 3 ? ' …' : ''}`,
+      '💡');
     sound.already();
     // kurz aufblitzen lassen, wo die Stadt ist
     for (const i of r.ids.slice(0, 12)) {
@@ -568,9 +639,9 @@ function onResult(r) {
     else ghost('miss', r.input, '#ff3355');
     if (r.gem) {
       const st = DATA.states[r.gem.s]?.name || '';
-      showMsg('miss', `${r.gem.n} ist eine ${r.gem.k} in ${st} – keine Stadt`);
+      popup('miss', r.gem.n, `keine Stadt, sondern ${r.gem.k === 'Markt' ? 'ein Markt' : 'eine Gemeinde'} in ${st}`, '🏡');
     } else {
-      showMsg('miss', `„${r.input}“ ist keine deutsche Stadt`);
+      popup('miss', r.input, 'keine deutsche Stadt – Tippfehler?', '✖');
     }
     sound.miss();
     setCombo(0, false);
@@ -656,7 +727,7 @@ function setupWriter(link) {
       const last = feedItems[0];
       if (last && !locked) {
         link.send({ t: 'undo', i: last.i });
-        showMsg('already', `Rückgängig: ${DATA.cities[last.i].n}`);
+        popup('undo', DATA.cities[last.i].n, 'wieder ausgeschaltet', '↩');
       }
     }
   });

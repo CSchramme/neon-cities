@@ -20,7 +20,7 @@ Jeder Buchstabe, den du tippst, erscheint **sofort live in allen Browserquellen*
 - **Sounds** (synthetisch erzeugt, abschaltbar), dazu ein leises Neon-Klicken bei jedem Buchstaben
 - **Hochformat für TikTok** (1080 × 1920) und **Querformat für YouTube/OBS** (1920 × 1080), dazu Einzel-Widgets (nur Karte, nur Eingabe, nur Statistik)
 - **Tolerante Erkennung:** Groß- und Kleinschreibung sind egal, `Koeln` = `Köln`, `Sankt` = `St.`, und `Frankfurt` findet beide Frankfurts. `Neustadt` lässt gleich alle 12 Neustädte aufleuchten.
-- **Hinweise im Spiel:** Ist eine Eingabe nur eine Gemeinde ohne Stadtrecht, sagt das Overlay das, z. B. „Unterhaching ist eine Gemeinde in Bayern – keine Stadt“.
+- **Hinweise im Spiel:** Ein Popup mitten auf der Karte zeigt, wenn etwas nicht klappt, z. B. „GARMISCH-PARTENKIRCHEN – keine Stadt, sondern ein Markt in Bayern“ oder „KÖLN – leuchtet schon“.
 - **Steuerseite** mit Live-Vorschau, Rückgängig-Knopf, „Tipp von @zuschauer“ und einem Spickzettel mit den fehlenden Städten je Bundesland, den nur du siehst
 - **Vom Handy aus tippen:** Die Steuerseite funktioniert im gleichen WLAN auch auf dem Handy.
 - **Der Spielstand wird automatisch gespeichert** und übersteht einen Neustart.
@@ -51,7 +51,7 @@ Alle Links findest du auch auf der Steuerseite unter **Browserquellen**, dort ka
 | Nur Karte | `http://localhost:3000/overlay?view=karte` | 760 × 1030 |
 | Nur Eingabe-Leiste | `http://localhost:3000/overlay?view=eingabe` | 1400 × 210 |
 | Nur Statistik | `http://localhost:3000/overlay?view=statistik` | 600 × 1680 |
-| Nur Erfolge | `http://localhost:3000/overlay?view=erfolge` | 640 × 1480 |
+| Nur Erfolge | `http://localhost:3000/overlay?view=erfolge` | 640 × 1840 |
 | Spielen (Overlay mit Eingabe) | `http://localhost:3000/spielen` | beliebig |
 
 ### OBS Studio / Streamlabs
@@ -83,6 +83,7 @@ Hänge sie mit `&` an, z. B. `…/overlay?layout=quer&bg=0&sound=0`.
 | `ticks=0` | kein Klicken beim Tippen |
 | `vol=40` | Lautstärke 0–100 (Standard 60) |
 | `hints=0` | noch dunkle Städte nicht als kleine Punkte zeigen |
+| `tipps=0` | bei Erfolgen nicht verraten, welche Städte noch fehlen |
 
 ## Spiel-Seite: Overlay mit Eingabe
 
@@ -109,6 +110,8 @@ Während ihr spielt, schaltet ihr Erfolge frei. Jeder Erfolg erscheint als leuch
 | Besondere Städte | Hauptstadt-Tour (alle 16 Landeshauptstädte) · Millionen-Club · Top 10 · Großstadt-Jäger (alle 80 Großstädte) · Stadtstaaten · Ruhrpott · Die Hanse · Kompass (nördlichste/südlichste/westlichste/östlichste Stadt) · Klein, aber oho (5 kleinste Städte) · Kurz & knapp (Ulm, Hof, Aub) · Neustadt-Sammler · Kurlaub (25 „Bad“-Städte) · Am Main · Am Rhein · Donau-Welle · Von A bis Z |
 | Bundesländer | Erstes Bundesland · Fünf Länder |
 | Spielweise | Im Flow / Unaufhaltsam / Neon-Maschine (10er-, 25er-, 50er-Combo) · Blitzlicht (10 Städte in einer Minute) · Mega-Treffer (5 Städte mit einer Eingabe) · Teamwork / Der ganze Chat (Tipps von 10 bzw. 25 verschiedenen Zuschauern) |
+
+**Was fehlt noch?** Bei „Von A bis Z“ zeigt das Overlay das ganze Alphabet. Vorhandene Buchstaben leuchten, fehlende sind dunkel, und sind es nur noch drei oder weniger, blinken sie rot. Fehlen bei einem Erfolg nur noch bis zu drei Städte, steht darunter z. B. „fehlt: Erfurt, Schwerin“. Wer das nicht verraten will, hängt `&tipps=0` an den Overlay-Link.
 
 Auf der Steuerseite siehst du alle Erfolge mit Fortschritt. Ein Klick auf einen Erfolg zeigt dir, welche Städte dafür noch fehlen. Die Liste siehst nur du. Erfolge bleiben freigeschaltet, auch wenn du eine Stadt zurücknimmst. Erst „Alles zurücksetzen“ setzt sie zurück.
 
