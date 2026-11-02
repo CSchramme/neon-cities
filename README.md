@@ -14,7 +14,9 @@ Jeder Buchstabe, den du tippst, erscheint **sofort live in allen Browserquellen*
 
 - **Alle 2.060 Städte Deutschlands** aus dem offiziellen Gemeindeverzeichnis (Stand 30.06.2026), jeweils mit Bundesland, Einwohnerzahl und Lage
 - **Live-Sync für jeden Tastendruck** in alle Overlays gleichzeitig, über WebSocket und ohne Verzögerung
-- **Neon-Effekte:** Ein Komet fliegt vom Eingabefeld zur Stadt, dann folgen Lichtring und Funken. Die Stadt leuchtet in ihrer Bundeslandfarbe weiter, das Bundesland wird mit jeder Stadt heller.
+- **Neon-Effekte:** Ein Komet fliegt vom Eingabefeld zur Stadt, dann folgen Lichtring und Funken. Die Stadt leuchtet in ihrer Bundeslandfarbe weiter.
+- **Lichtnetz:** Benachbarte Städte verbinden sich mit Lichtlinien, und liegen sie nah beieinander, fließt ihr Licht zu einer gemeinsamen Fläche zusammen, wie Städte auf Nachtfotos aus dem All.
+- **Komplette Bundesländer leuchten als ganze Fläche**, mit kräftigem Rand und einem Lichtschimmer, der darüber läuft.
 - **Große Momente:** Bundesland komplett, Meilensteine (100, 200 … Städte), Combo-Zähler und ein Feuerwerk-Finale, wenn ganz Deutschland leuchtet
 - **31 Erfolge** wie „Hauptstadt-Tour“, „Millionen-Club“, „Ruhrpott“ oder „Die Hanse“, mit Freischalt-Animation, Sound und einer „Fast geschafft“-Liste im Overlay (mehr dazu [unten](#erfolge))
 - **Sounds** (synthetisch erzeugt, abschaltbar), dazu ein leises Neon-Klicken bei jedem Buchstaben

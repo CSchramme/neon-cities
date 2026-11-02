@@ -35,6 +35,15 @@ function sprite(size, stops) {
 const glowSprite = (color) => sprite(128, [
   [0, rgba(color, 1)], [0.2, rgba(color, 0.6)], [0.5, rgba(color, 0.18)], [1, rgba(color, 0)],
 ]);
+// Dichte-Sprite (Gauß-Kurve exp(-9x²)), aus dem die verschmolzenen Lichtflächen entstehen
+const gaussSprite = (color) => sprite(128, [
+  [0, rgba(color, 1)], [0.1, rgba(color, 0.914)], [0.2, rgba(color, 0.698)], [0.3, rgba(color, 0.445)],
+  [0.4, rgba(color, 0.237)], [0.5, rgba(color, 0.105)], [0.6, rgba(color, 0.039)], [0.7, rgba(color, 0.012)],
+  [1, rgba(color, 0)],
+]);
+const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+const LINK_DIST = 24; // Karteneinheiten (~20 km): so nah verbinden sich Städte mit Lichtlinien
+
 const coreSprite = (color) => sprite(64, [
   [0, 'rgba(255,255,255,1)'], [0.18, 'rgba(255,255,255,0.95)'], [0.32, rgba(color, 0.85)], [1, rgba(color, 0)],
 ]);
@@ -67,6 +76,18 @@ export class NeonMap {
     this.cities.forEach((c, i) => {
       if (!probe.isPointInPath(this.paths[c.s], c.x, c.y, 'evenodd')) this.outside.add(i);
     });
+    // Mittelpunkt und Größe je Bundesland (für das Leuchten fertiger Länder)
+    this.stateBox = this.states.map((st) => {
+      let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
+      for (const r of st.rings) {
+        for (let i = 0; i < r.length; i += 2) {
+          x0 = Math.min(x0, r[i]); x1 = Math.max(x1, r[i]);
+          y0 = Math.min(y0, r[i + 1]); y1 = Math.max(y1, r[i + 1]);
+        }
+      }
+      return { cx: st.label[0], cy: st.label[1], r: Math.max(x1 - x0, y1 - y0) * 0.75 };
+    });
+    this.gauss = STATE_COLORS.map(gaussSprite);
     this.glow = STATE_COLORS.map(glowSprite);
     this.core = STATE_COLORS.map(coreSprite);
     this.white = glowSprite('#ffffff');
@@ -78,6 +99,7 @@ export class NeonMap {
     this.foundArray = [];
     this.baseDirty = false;
     this.compDirty = false;
+    this.lightDirty = false;
     this.anyDone = false;
     this.layout = null;
     this.running = false;
@@ -102,9 +124,18 @@ export class NeonMap {
     const pw = Math.max(1, Math.ceil(this.mapW * k));
     const ph = Math.max(1, Math.ceil(this.mapH * k));
     this.base = this.makeLayer(pw, ph);
-    this.light = this.makeLayer(pw, ph);
-    this.comp = this.makeLayer(pw, ph); // base + light, wird pro Frame nur einmal gezeichnet
+    this.light = this.makeLayer(pw, ph); // Lichtlinien + helle Stadtkerne (scharf)
+    this.comp = this.makeLayer(pw, ph); // alles zusammen, wird pro Frame nur einmal gezeichnet
     this.done = this.makeLayer(pw, ph); // fertige Bundesländer (pulsieren)
+    // Licht-Dichte in geringerer Auflösung: daraus werden die verschmolzenen Lichtflächen
+    this.ls = Math.min(0.5, 520 / pw);
+    const lw = Math.max(1, Math.round(pw * this.ls));
+    const lh = Math.max(1, Math.round(ph * this.ls));
+    this.dens = this.makeLayer(lw, lh);
+    this.densCtx = this.dens.getContext('2d', { willReadFrequently: true });
+    this.blobs = this.makeLayer(lw, lh);
+    this.blobImg = this.blobs.getContext('2d').createImageData(lw, lh);
+    this.shine = this.makeLayer(Math.max(1, Math.round(pw * 0.5)), Math.max(1, Math.round(ph * 0.5)));
     this.layout = true;
     this.rebuildAll();
   }
@@ -158,7 +189,7 @@ export class NeonMap {
     // Schutz: bei sehr vielen gleichzeitigen Effekten einfach direkt einschalten
     if (this.effects.length > 160) animate = false;
     if (!animate) {
-      for (const i of fresh) this.drawCityLight(i);
+      this.lightDirty = true;
       this.baseDirty = true;
       return;
     }
@@ -184,7 +215,7 @@ export class NeonMap {
   impact(i, big, total) {
     if (!this.found.has(i)) return;
     this.pendingLight.delete(i);
-    this.drawCityLight(i);
+    this.lightDirty = true;
     this.baseDirty = true;
     const c = this.cities[i];
     const p = this.cityPos(i);
@@ -258,88 +289,174 @@ export class NeonMap {
   // ------------------------------------------------------------ Ebenen
   rebuildAll() {
     if (!this.layout) return;
-    const g = this.light.getContext('2d');
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.clearRect(0, 0, this.light.width, this.light.height);
-    // nach Bundesland gruppieren: nur 16 Clip-Operationen statt eine pro Stadt
-    const byState = this.states.map(() => []);
-    const loose = [];
-    for (const i of this.found) {
-      if (this.pendingLight.has(i)) continue;
-      if (this.outside.has(i)) loose.push(i);
-      else byState[this.cities[i].s].push(i);
-    }
-    const km = this.k * this.m;
-    byState.forEach((list, s) => {
-      if (!list.length) return;
-      g.save();
-      g.setTransform(km, 0, 0, km, 0, 0);
-      g.clip(this.paths[s], 'evenodd');
-      g.globalCompositeOperation = 'lighter';
-      g.globalAlpha = 0.42;
-      for (const i of list) {
-        const c = this.cities[i];
-        const r = this.cityRadius(c);
-        g.drawImage(this.glow[s], c.x - r, c.y - r, r * 2, r * 2);
-      }
-      g.restore();
-    });
-    g.save();
-    g.setTransform(km, 0, 0, km, 0, 0);
-    g.globalCompositeOperation = 'lighter';
-    g.globalAlpha = 0.42;
-    for (const i of loose) {
-      const c = this.cities[i];
-      const r = this.cityRadius(c);
-      g.drawImage(this.glow[c.s], c.x - r, c.y - r, r * 2, r * 2);
-    }
-    for (const i of loose) byState[this.cities[i].s].push(i);
-    g.globalAlpha = 0.95;
-    byState.forEach((list, s) => {
-      for (const i of list) {
-        const c = this.cities[i];
-        const cr = this.coreRadius(c);
-        g.drawImage(this.core[s], c.x - cr, c.y - cr, cr * 2, cr * 2);
-      }
-    });
-    g.restore();
-    this.compDirty = true;
+    this.lightDirty = true;
     this.baseDirty = true;
   }
 
-  /** base + light zu einem Bild zusammenfassen (spart Rechenzeit pro Frame) */
+  blobParams(c) {
+    const lp = Math.log10(Math.max(c.p, 1000) / 1000);
+    return {
+      sig: 5.5 + 1.2 * lp,
+      w: Math.min(0.85, Math.max(0.38, 0.42 + 0.12 * Math.log10(Math.max(c.p, 1) / 2000))),
+    };
+  }
+
+  /** Licht neu berechnen: verschmelzende Flächen, Lichtlinien und Stadtkerne */
+  rebuildLight() {
+    const km = this.k * this.m;
+    const lit = [];
+    for (const i of this.found) if (!this.pendingLight.has(i)) lit.push(i);
+    const byState = this.states.map(() => []);
+    const loose = [];
+    for (const i of lit) {
+      if (this.outside.has(i)) loose.push(i);
+      else byState[this.cities[i].s].push(i);
+    }
+
+    // 1) Dichte: weiche Gauß-Flecken je Stadt (pro Bundesland abgeschnitten)
+    const dg = this.densCtx;
+    const kd = km * this.ls;
+    dg.setTransform(1, 0, 0, 1, 0, 0);
+    dg.globalCompositeOperation = 'source-over';
+    dg.globalAlpha = 1;
+    dg.clearRect(0, 0, this.dens.width, this.dens.height);
+    const drawDens = (i) => {
+      const c = this.cities[i];
+      const { sig, w } = this.blobParams(c);
+      const R = 3 * sig;
+      dg.globalAlpha = w;
+      dg.drawImage(this.gauss[c.s], c.x - R, c.y - R, R * 2, R * 2);
+    };
+    byState.forEach((list, st) => {
+      if (!list.length) return;
+      dg.save();
+      dg.setTransform(kd, 0, 0, kd, 0, 0);
+      dg.clip(this.paths[st], 'evenodd');
+      dg.globalCompositeOperation = 'lighter';
+      for (const i of list) drawDens(i);
+      dg.restore();
+    });
+    if (loose.length) {
+      dg.save();
+      dg.setTransform(kd, 0, 0, kd, 0, 0);
+      dg.globalCompositeOperation = 'lighter';
+      for (const i of loose) drawDens(i);
+      dg.restore();
+    }
+
+    // 2) Schwelle: wo sich das Licht nahe Städte überlagert, entsteht eine gemeinsame Fläche
+    const W = this.dens.width;
+    const H = this.dens.height;
+    const src = dg.getImageData(0, 0, W, H).data;
+    const out = this.blobImg.data;
+    for (let p = 0; p < src.length; p += 4) {
+      const a = src[p + 3] / 255;
+      if (a < 0.24) {
+        out[p + 3] = 0;
+        continue;
+      }
+      const edge = smooth((a - 0.24) / 0.12);
+      const inner = smooth((a - 0.3) / 0.7);
+      const hot = smooth((a - 0.7) / 0.3) * 0.18; // dichte Ballungen werden etwas heller
+      out[p] = src[p] + (255 - src[p]) * hot;
+      out[p + 1] = src[p + 1] + (255 - src[p + 1]) * hot;
+      out[p + 2] = src[p + 2] + (255 - src[p + 2]) * hot;
+      out[p + 3] = 255 * edge * (0.45 + 0.25 * inner);
+    }
+    this.blobs.getContext('2d').putImageData(this.blobImg, 0, 0);
+
+    // 3) Lichtlinien zwischen benachbarten Städten + helle Kerne (volle Auflösung)
+    const g = this.light.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, this.light.width, this.light.height);
+    g.save();
+    g.setTransform(km, 0, 0, km, 0, 0);
+    g.globalCompositeOperation = 'lighter';
+    g.lineCap = 'round';
+    const px = 1 / this.m;
+    const links = this.neighborLinks(lit);
+    links.forEach((path, st) => {
+      if (!path) return;
+      const col = STATE_COLORS[st];
+      g.strokeStyle = rgba(col, 0.16);
+      g.lineWidth = 4 * px;
+      g.stroke(path);
+      g.strokeStyle = mixWhite(col, 0.35);
+      g.globalAlpha = 0.55;
+      g.lineWidth = 1 * px;
+      g.stroke(path);
+      g.globalAlpha = 1;
+    });
+    g.globalAlpha = 0.95;
+    for (const i of lit) {
+      const c = this.cities[i];
+      const cr = this.coreRadius(c);
+      g.drawImage(this.core[c.s], c.x - cr, c.y - cr, cr * 2, cr * 2);
+    }
+    g.restore();
+    this.compDirty = true;
+  }
+
+  /** Jede Stadt verbindet sich mit bis zu 2 nächsten Nachbarn im selben Bundesland */
+  neighborLinks(lit) {
+    const cell = LINK_DIST;
+    const grid = new Map();
+    for (const i of lit) {
+      const c = this.cities[i];
+      const key = `${Math.floor(c.x / cell)},${Math.floor(c.y / cell)}`;
+      let arr = grid.get(key);
+      if (!arr) grid.set(key, (arr = []));
+      arr.push(i);
+    }
+    const seen = new Set();
+    const paths = [];
+    for (const i of lit) {
+      const c = this.cities[i];
+      const gx = Math.floor(c.x / cell);
+      const gy = Math.floor(c.y / cell);
+      const near = [];
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          for (const j of grid.get(`${gx + dx},${gy + dy}`) || []) {
+            if (j === i) continue;
+            const o = this.cities[j];
+            if (o.s !== c.s) continue;
+            const d = Math.hypot(o.x - c.x, o.y - c.y);
+            if (d < LINK_DIST) near.push([d, j]);
+          }
+        }
+      }
+      near.sort((a, b) => a[0] - b[0]);
+      for (const [, j] of near.slice(0, 2)) {
+        const key = i < j ? `${i}-${j}` : `${j}-${i}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const o = this.cities[j];
+        const path = paths[c.s] || (paths[c.s] = new Path2D());
+        path.moveTo(c.x, c.y);
+        path.lineTo(o.x, o.y);
+      }
+    }
+    return paths;
+  }
+
+  /** Alles zu einem Bild zusammenfassen (spart Rechenzeit pro Frame) */
   recomposite() {
     const g = this.comp.getContext('2d');
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = 1;
     g.clearRect(0, 0, this.comp.width, this.comp.height);
     g.drawImage(this.base, 0, 0);
     g.globalCompositeOperation = 'lighter';
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'low'; // bilinear reicht für weiche Flächen und ist viel schneller
+    g.globalAlpha = 0.4; // weicher Schein um die Lichter
+    g.drawImage(this.dens, 0, 0, this.comp.width, this.comp.height);
+    g.globalAlpha = 1;
+    g.drawImage(this.blobs, 0, 0, this.comp.width, this.comp.height);
     g.drawImage(this.light, 0, 0);
     g.globalCompositeOperation = 'source-over';
-  }
-
-  drawCityLight(i) {
-    const c = this.cities[i];
-    const g = this.light.getContext('2d');
-    const km = this.k * this.m;
-    g.save();
-    g.setTransform(km, 0, 0, km, 0, 0);
-    if (!this.outside.has(i)) g.clip(this.paths[c.s], 'evenodd');
-    g.globalCompositeOperation = 'lighter';
-    const r = this.cityRadius(c);
-    g.globalAlpha = 0.42;
-    g.drawImage(this.glow[c.s], c.x - r, c.y - r, r * 2, r * 2);
-    g.restore();
-    // heller Kern (nicht abgeschnitten)
-    g.save();
-    g.setTransform(km, 0, 0, km, 0, 0);
-    g.globalCompositeOperation = 'lighter';
-    const cr = this.coreRadius(c);
-    g.globalAlpha = 0.95;
-    g.drawImage(this.core[c.s], c.x - cr, c.y - cr, cr * 2, cr * 2);
-    g.restore();
-    this.compDirty = true;
   }
 
   rebuildBase() {
@@ -357,11 +474,20 @@ export class NeonMap {
       g.fillStyle = 'rgba(8,6,24,0.82)';
       g.fill(this.paths[s], 'evenodd');
     }
-    // Farbton je nach Fortschritt
+    // Farbton je nach Fortschritt – fertige Bundesländer leuchten als ganze Fläche
     for (let s = 0; s < this.states.length; s++) {
       const p = this.counts[s] / this.states[s].total;
-      const done = p >= 1;
-      g.fillStyle = rgba(STATE_COLORS[s], done ? 0.42 : 0.05 + 0.25 * p);
+      const col = STATE_COLORS[s];
+      if (p >= 1) {
+        const b = this.stateBox[s];
+        const grd = g.createRadialGradient(b.cx, b.cy, 0, b.cx, b.cy, b.r);
+        grd.addColorStop(0, `rgba(${mixWhite(col, 0.15).slice(4, -1)},0.62)`);
+        grd.addColorStop(0.55, rgba(col, 0.52));
+        grd.addColorStop(1, rgba(col, 0.42));
+        g.fillStyle = grd;
+      } else {
+        g.fillStyle = rgba(col, 0.05 + 0.25 * p);
+      }
       g.fill(this.paths[s], 'evenodd');
     }
     // Leuchtende Grenzen
@@ -371,14 +497,14 @@ export class NeonMap {
       const col = STATE_COLORS[s];
       g.save();
       g.shadowColor = col;
-      g.shadowBlur = (6 + 22 * p) * k;
+      g.shadowBlur = (p >= 1 ? 40 : 6 + 22 * p) * k;
       g.strokeStyle = rgba(col, 0.35 + 0.65 * p);
       g.lineWidth = (1.6 + 1.6 * p) * px;
       g.stroke(this.paths[s]);
       g.restore();
       g.strokeStyle = p > 0 ? mixWhite(col, 0.55) : rgba(col, 0.4);
       g.globalAlpha = 0.35 + 0.65 * p;
-      g.lineWidth = 0.7 * px;
+      g.lineWidth = (p >= 1 ? 1.6 : 0.7) * px;
       g.stroke(this.paths[s]);
       g.globalAlpha = 1;
     }
@@ -435,6 +561,10 @@ export class NeonMap {
 
   frame(t, dt) {
     if (!this.layout) return;
+    if (this.lightDirty) {
+      this.lightDirty = false;
+      this.rebuildLight();
+    }
     if (this.baseDirty) {
       this.baseDirty = false;
       this.rebuildBase();
@@ -454,9 +584,10 @@ export class NeonMap {
 
     // fertige Bundesländer pulsieren
     if (this.anyDone) {
-      ctx.globalAlpha = 0.07 + 0.07 * Math.sin(t * 2.2);
+      ctx.globalAlpha = 0.1 + 0.1 * Math.sin(t * 2.2);
       ctx.drawImage(this.done, this.mapX, this.mapY, this.mapW, this.mapH);
       ctx.globalAlpha = 1;
+      this.drawShine(ctx, t);
     }
 
     // Funkeln zufälliger Städte
@@ -475,6 +606,30 @@ export class NeonMap {
     this.drawParticles(ctx, dt);
     ctx.globalCompositeOperation = 'source-over';
     this.drawLabels(ctx, t);
+  }
+
+  /** Lichtschimmer, der schräg über fertige Bundesländer wandert */
+  drawShine(ctx, t) {
+    const sg = this.shine.getContext('2d');
+    const w = this.shine.width;
+    const h = this.shine.height;
+    const period = 5;
+    const ph = (t % period) / period;
+    const x = -0.4 * w + ph * 1.8 * w;
+    sg.globalCompositeOperation = 'source-over';
+    sg.setTransform(1, 0, 0, 1, 0, 0);
+    sg.clearRect(0, 0, w, h);
+    const grd = sg.createLinearGradient(x, 0, x + w * 0.35, h * 0.35);
+    grd.addColorStop(0, 'rgba(255,255,255,0)');
+    grd.addColorStop(0.5, 'rgba(255,255,255,0.55)');
+    grd.addColorStop(1, 'rgba(255,255,255,0)');
+    sg.fillStyle = grd;
+    sg.fillRect(0, 0, w, h);
+    sg.globalCompositeOperation = 'destination-in';
+    sg.drawImage(this.done, 0, 0, w, h);
+    ctx.globalAlpha = 0.45;
+    ctx.drawImage(this.shine, this.mapX, this.mapY, this.mapW, this.mapH);
+    ctx.globalAlpha = 1;
   }
 
   fillState(ctx, s, style) {

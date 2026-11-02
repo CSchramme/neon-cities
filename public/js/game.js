@@ -7,7 +7,7 @@ export const STATE_COLORS = [
   '#e040ff', // HH Hamburg
   '#ffa31a', // NI Niedersachsen
   '#00f0ff', // HB Bremen
-  '#7a6bff', // NW Nordrhein-Westfalen
+  '#5a3dff', // NW Nordrhein-Westfalen (kräftig, damit es voll beleuchtet nicht weiß wird)
   '#c8ff1a', // HE Hessen
   '#ff6a1a', // RP Rheinland-Pfalz
   '#ff2d6f', // BW Baden-Württemberg
